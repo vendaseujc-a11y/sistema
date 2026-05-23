@@ -5,6 +5,7 @@ export interface Produto {
   nome: string;
   sku: string; // Único
   preco: number;
+  preco_custo: number; // Preço de Custo
   estoque: number;
   estoque_minimo: number;
   imagem_url?: string | null;

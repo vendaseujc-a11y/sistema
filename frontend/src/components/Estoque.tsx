@@ -44,6 +44,7 @@ export const Estoque: React.FC = () => {
   const [novoNome, setNovoNome] = useState('');
   const [novoSku, setNovoSku] = useState('');
   const [novoPreco, setNovoPreco] = useState('');
+  const [novoPrecoCusto, setNovoPrecoCusto] = useState('');
   const [novoEstoque, setNovoEstoque] = useState('');
   const [novoEstoqueMinimo, setNovoEstoqueMinimo] = useState('');
   const [novoLoading, setNovoLoading] = useState(false);
@@ -225,13 +226,14 @@ export const Estoque: React.FC = () => {
   // Cadastrar novo produto
   const handleNovoProdutoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novoNome || !novoSku || !novoPreco || !novoEstoque) {
-      toast('Campos obrigatórios', 'Por favor preencha os campos essenciais do cadastro.', 'warning');
+    if (!novoNome || !novoSku || !novoPreco || !novoPrecoCusto || !novoEstoque) {
+      toast('Campos obrigatórios', 'Por favor preencha os campos essenciais do cadastro (nome, sku, custo, venda, estoque).', 'warning');
       return;
     }
 
     setNovoLoading(true);
     const precoNum = parseFloat(novoPreco);
+    const precoCustoNum = parseFloat(novoPrecoCusto);
     const estoqueInt = parseInt(novoEstoque);
     const estoqueMinInt = parseInt(novoEstoqueMinimo) || 0;
 
@@ -252,6 +254,7 @@ export const Estoque: React.FC = () => {
           nome: novoNome,
           sku: novoSku,
           preco: precoNum,
+          preco_custo: precoCustoNum,
           estoque: estoqueInt,
           estoque_minimo: estoqueMinInt,
           imagem_url: null,
@@ -289,6 +292,7 @@ export const Estoque: React.FC = () => {
           nome: novoNome,
           sku: novoSku,
           preco: precoNum,
+          preco_custo: precoCustoNum,
           estoque: estoqueInt,
           estoque_minimo: estoqueMinInt
         })
@@ -327,6 +331,7 @@ export const Estoque: React.FC = () => {
     setNovoNome('');
     setNovoSku('');
     setNovoPreco('');
+    setNovoPrecoCusto('');
     setNovoEstoque('');
     setNovoEstoqueMinimo('');
   };
@@ -389,7 +394,8 @@ export const Estoque: React.FC = () => {
                   <TableRow>
                     <TableHead>Produto</TableHead>
                     <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Preço Unitário</TableHead>
+                    <TableHead className="text-right">P. Custo</TableHead>
+                    <TableHead className="text-right">P. Venda</TableHead>
                     <TableHead className="text-center">Quantidade</TableHead>
                     <TableHead className="text-center">Mínimo Requerido</TableHead>
                     <TableHead className="text-center">Status</TableHead>
@@ -405,7 +411,10 @@ export const Estoque: React.FC = () => {
                       <TableRow key={prod.id} className="hover:bg-muted/20">
                         <TableCell className="font-bold">{prod.nome}</TableCell>
                         <TableCell className="font-mono text-xs uppercase tracking-wider">{prod.sku}</TableCell>
-                        <TableCell className="text-right font-semibold">R$ {prod.preco.toFixed(2)}</TableCell>
+                        <TableCell className="text-right text-muted-foreground font-mono">
+                          R$ {prod.preco_custo ? prod.preco_custo.toFixed(2) : '0.00'}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-indigo-500">R$ {prod.preco.toFixed(2)}</TableCell>
                         <TableCell className={`text-center font-extrabold ${isLowStock ? 'text-amber-500' : 'text-foreground'}`}>
                           {prod.estoque} un
                         </TableCell>
@@ -555,6 +564,17 @@ export const Estoque: React.FC = () => {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
+              label="Preço de Custo (R$)"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Ex: 180.00"
+              required
+              value={novoPrecoCusto}
+              onChange={(e) => setNovoPrecoCusto(e.target.value)}
+            />
+
+            <Input
               label="Preço de Venda (R$)"
               type="number"
               step="0.01"
@@ -564,7 +584,9 @@ export const Estoque: React.FC = () => {
               value={novoPreco}
               onChange={(e) => setNovoPreco(e.target.value)}
             />
+          </div>
 
+          <div className="grid gap-4 sm:grid-cols-2">
             <Input
               label="Estoque Inicial"
               type="number"
@@ -574,17 +596,17 @@ export const Estoque: React.FC = () => {
               value={novoEstoque}
               onChange={(e) => setNovoEstoque(e.target.value)}
             />
-          </div>
 
-          <Input
-            label="Estoque Mínimo para Alerta"
-            type="number"
-            min="0"
-            placeholder="Ex: 3"
-            required
-            value={novoEstoqueMinimo}
-            onChange={(e) => setNovoEstoqueMinimo(e.target.value)}
-          />
+            <Input
+              label="Estoque Mínimo para Alerta"
+              type="number"
+              min="0"
+              placeholder="Ex: 3"
+              required
+              value={novoEstoqueMinimo}
+              onChange={(e) => setNovoEstoqueMinimo(e.target.value)}
+            />
+          </div>
 
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setIsNovoProdutoModalOpen(false)}>
