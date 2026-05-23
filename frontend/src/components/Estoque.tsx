@@ -7,7 +7,7 @@ import { Input } from './ui/input.tsx';
 import { Dialog } from './ui/dialog.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
-  Plus, PackageOpen, ChevronLeft, ChevronRight, History 
+  Plus, PackageOpen, ChevronLeft, ChevronRight, History, Trash2 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 
@@ -327,6 +327,45 @@ export const Estoque: React.FC = () => {
     }
   };
 
+  const handleDeleteProduct = async (produtoId: string, produtoNome: string) => {
+    const confirm = window.confirm(`Deseja realmente excluir o produto "${produtoNome}"? Esta ação é irreversível.`);
+    if (!confirm) return;
+
+    try {
+      if (isMockMode) {
+        const mockProducts = getMockProducts();
+        const updated = mockProducts.filter(p => p.id !== produtoId);
+        saveMockProducts(updated);
+        toast('Produto Excluído', `"${produtoNome}" foi removido do estoque local.`, 'success');
+        fetchInventory(currentPage);
+        return;
+      }
+
+      // -- MODO REAL DO SUPABASE --
+      const { error } = await supabase
+        .from('produtos')
+        .delete()
+        .eq('id', produtoId);
+
+      if (error) {
+        // Código 23503 do Postgres indica violação de Foreign Key
+        if (error.code === '23503' || error.message?.includes('foreign key')) {
+          toast('Exclusão Impedida', 'Este produto já possui vendas registradas e não pode ser excluído por motivos de histórico comercial.', 'error');
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      toast('Excluído', `"${produtoNome}" foi removido do Supabase.`, 'success');
+      fetchInventory(currentPage);
+
+    } catch (err: any) {
+      console.error('Erro ao excluir produto:', err);
+      toast('Erro de Exclusão', err.message || 'Erro inesperado ao remover produto.', 'error');
+    }
+  };
+
   const resetNovoForm = () => {
     setNovoNome('');
     setNovoSku('');
@@ -435,14 +474,24 @@ export const Estoque: React.FC = () => {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button 
-                            variant="secondary" 
-                            size="sm" 
-                            className="h-8 hover:bg-primary/10 hover:text-primary"
-                            onClick={() => openEntradaModal(prod)}
-                          >
-                            <Plus className="h-3 w-3 mr-1" /> Entrada
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button 
+                              variant="secondary" 
+                              size="sm" 
+                              className="h-8 hover:bg-primary/10 hover:text-primary"
+                              onClick={() => openEntradaModal(prod)}
+                            >
+                              <Plus className="h-3 w-3 mr-1" /> Entrada
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteProduct(prod.id, prod.nome)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

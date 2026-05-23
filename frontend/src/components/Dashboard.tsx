@@ -6,11 +6,15 @@ import { Button } from './ui/button.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
   TrendingUp, DollarSign, AlertTriangle, 
-  ShoppingBag, Sparkles, RefreshCw, Clock 
+  ShoppingBag, Sparkles, RefreshCw, Clock, Trash2 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { getMockProducts, getMockSales } from '../lib/mockData.ts';
-import { Produto, Venda } from '../types/index.ts';
+import { 
+  getMockProducts, saveMockProducts, 
+  getMockSales, saveMockSales, 
+  getMockLogs, saveMockLogs 
+} from '../lib/mockData.ts';
+import { Produto, Venda, EstoqueLog } from '../types/index.ts';
 
 export const Dashboard: React.FC = () => {
   const { isMockMode } = useAuth();
@@ -155,6 +159,110 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const handleDeleteSale = async (vendaId: string) => {
+    const confirm = window.confirm(`Deseja realmente cancelar/excluir a Venda #${vendaId.substring(0, 8)}? Esta ação irá deletar os itens e reajustar o estoque.`);
+    if (!confirm) return;
+
+    try {
+      if (isMockMode) {
+        // --- PROCESSAMENTO LOCAL DE EXCLUSÃO MOCK ---
+        const salesList = getMockSales();
+        const productsList = getMockProducts();
+        const logsList = getMockLogs();
+
+        const saleToDelete = salesList.find(s => s.id === vendaId);
+        if (!saleToDelete) return;
+
+        // Reverter estoque para cada produto vendido
+        const updatedProducts = productsList.map(prod => {
+          const item = saleToDelete.itens?.find(i => i.produto_id === prod.id);
+          if (item) {
+            return {
+              ...prod,
+              estoque: prod.estoque + item.quantidade,
+              updated_at: new Date().toISOString()
+            };
+          }
+          return prod;
+        });
+
+        // Gravar log de cancelamento
+        const newLogs: EstoqueLog[] = (saleToDelete.itens || []).map(item => ({
+          id: 'log-' + Math.random().toString(36).substring(2, 9),
+          produto_id: item.produto_id,
+          quantidade: item.quantidade,
+          tipo: 'entrada' as const,
+          descricao: `Retorno por Cancelamento da Venda #${vendaId.substring(0, 8)}`,
+          usuario_id: 'd9b736b4-24ff-4fc9-b684-2a62886f3458',
+          created_at: new Date().toISOString(),
+          produto: item.produto
+        }));
+
+        saveMockProducts(updatedProducts);
+        saveMockSales(salesList.filter(s => s.id !== vendaId));
+        saveMockLogs([...newLogs, ...logsList]);
+
+        toast('Venda Cancelada', 'Estoque reabastecido localmente.', 'success');
+        fetchDashboardData();
+        return;
+      }
+
+      // --- PROCESSAMENTO REAL DO SUPABASE ---
+      // 1. Buscar os itens da venda antes de deletar para repor o estoque
+      const { data: itens, error: itensError } = await supabase
+        .from('itens_venda')
+        .select('produto_id, quantidade')
+        .eq('venda_id', vendaId);
+
+      if (itensError) throw itensError;
+
+      // 2. Devolver a quantidade ao estoque de cada produto
+      if (itens && itens.length > 0) {
+        for (const item of itens) {
+          // Obter estoque atual do produto
+          const { data: prod } = await supabase
+            .from('produtos')
+            .select('estoque')
+            .eq('id', item.produto_id)
+            .single();
+
+          if (prod) {
+            await supabase
+              .from('produtos')
+              .update({ estoque: prod.estoque + item.quantidade, updated_at: new Date().toISOString() })
+              .eq('id', item.produto_id);
+
+            // Criar log de retorno
+            await supabase
+              .from('estoque_logs')
+              .insert({
+                produto_id: item.produto_id,
+                quantidade: item.quantidade,
+                tipo: 'entrada',
+                descricao: `Devolução por exclusão de Venda #${vendaId.substring(0, 8)}`,
+                usuario_id: (await supabase.auth.getUser()).data.user?.id
+              });
+          }
+        }
+      }
+
+      // 3. Excluir a venda (os itens de venda serão excluídos em cascata no Postgres)
+      const { error: deleteError } = await supabase
+        .from('vendas')
+        .delete()
+        .eq('id', vendaId);
+
+      if (deleteError) throw deleteError;
+
+      toast('Venda Excluída', 'Registro removido e estoque restabelecido no Supabase.', 'success');
+      fetchDashboardData();
+
+    } catch (err: any) {
+      console.error('Erro ao excluir venda:', err);
+      toast('Erro de Exclusão', err.message || 'Erro inesperado ao excluir venda.', 'error');
+    }
+  };
+
   useEffect(() => {
     fetchDashboardData();
   }, [isMockMode]);
@@ -289,21 +397,33 @@ export const Dashboard: React.FC = () => {
                     key={venda.id} 
                     className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors"
                   >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate">
                         {venda.itens && venda.itens.length > 0 
                           ? venda.itens.map(i => i.produto?.nome || 'Item').join(', ') 
                           : 'Venda Geral'}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground truncate">
                         {venda.cliente_email || 'Cliente não identificado'}
                       </p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-indigo-500">R$ {venda.total.toFixed(2)}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {new Date(venda.created_at).toLocaleTimeString('pt-BR')}
-                      </p>
+
+                    <div className="flex items-center gap-3 shrink-0 ml-4">
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-indigo-500">R$ {venda.total.toFixed(2)}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(venda.created_at).toLocaleTimeString('pt-BR')}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full animate-fade-in"
+                        onClick={() => handleDeleteSale(venda.id)}
+                        title="Excluir Venda"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
