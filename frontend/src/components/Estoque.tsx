@@ -7,7 +7,7 @@ import { Input } from './ui/input.tsx';
 import { Dialog } from './ui/dialog.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
-  Plus, PackageOpen, ChevronLeft, ChevronRight, History, Trash2 
+  Plus, PackageOpen, ChevronLeft, ChevronRight, History, Trash2, Barcode 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 
@@ -602,17 +602,30 @@ export const Estoque: React.FC = () => {
             onChange={(e) => setNovoNome(e.target.value)}
           />
 
-          <Input
-            label="SKU do Produto (Código de Barras ou Identificador Único)"
-            type="text"
-            placeholder="Ex: HYPX-TEC-01"
-            required
-            value={novoSku}
-            onChange={(e) => setNovoSku(e.target.value)}
-          />
+          <div className="relative">
+            <Input
+              id="novo-sku"
+              label="SKU do Produto (Código de Barras ou Identificador Único)"
+              type="text"
+              placeholder="Ex: HYPX-TEC-01"
+              required
+              value={novoSku}
+              onChange={(e) => setNovoSku(e.target.value)}
+              className="pr-10"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault(); // Impede o envio precoce do formulário ao scanear
+                  const nextInput = document.getElementById('novo-preco-custo') as HTMLInputElement;
+                  if (nextInput) nextInput.focus();
+                }
+              }}
+            />
+            <Barcode className="absolute right-3 top-[2.1rem] h-5 w-5 text-indigo-500/80 animate-pulse pointer-events-none" aria-label="Pode utilizar leitor de código de barras" />
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
+              id="novo-preco-custo"
               label="Preço de Custo (R$)"
               type="number"
               step="0.01"

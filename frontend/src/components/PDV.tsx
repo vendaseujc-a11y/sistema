@@ -6,7 +6,7 @@ import { Button } from './ui/button.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, Check, 
-  Sparkles, Mail 
+  Sparkles, Mail, Barcode 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 
@@ -86,6 +86,87 @@ export const PDV: React.FC = () => {
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm, isMockMode]);
+
+  // Processamento de código de barras escaneado
+  const handleBarcodeScanned = async (barcode: string) => {
+    toast('Código Lido', `Buscando SKU: ${barcode}...`, 'info');
+    
+    try {
+      if (isMockMode) {
+        const mockProducts = getMockProducts();
+        const found = mockProducts.find(p => p.sku.toLowerCase() === barcode.toLowerCase());
+        
+        if (found) {
+          addToCart(found);
+        } else {
+          toast('Não Encontrado', `Produto com o SKU "${barcode}" não está cadastrado localmente.`, 'warning');
+        }
+        return;
+      }
+
+      // -- MODO REAL DO SUPABASE --
+      const { data, error } = await supabase
+        .from('produtos')
+        .select('*')
+        .eq('sku', barcode)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        addToCart(data);
+      } else {
+        toast('Não Encontrado', `Produto com o SKU "${barcode}" não está cadastrado no Supabase.`, 'warning');
+      }
+
+    } catch (err: any) {
+      console.error('Erro ao buscar código de barras:', err);
+      toast('Erro de Scanner', 'Incapaz de consultar o código de barras no banco.', 'error');
+    }
+  };
+
+  // Leitor de Código de Barras Global
+  useEffect(() => {
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+      
+      if (isInput) {
+        // Se já estiver digitando em algum campo do formulário, ignoramos a captura global
+        return;
+      }
+
+      const currentTime = Date.now();
+      const diff = currentTime - lastKeyTime;
+      lastKeyTime = currentTime;
+
+      if (diff > 80) {
+        buffer = '';
+      }
+
+      if (e.key === 'Enter') {
+        const cleanBuffer = buffer.trim();
+        if (cleanBuffer.length >= 3) {
+          e.preventDefault();
+          handleBarcodeScanned(cleanBuffer);
+          buffer = '';
+        }
+        return;
+      }
+
+      if (e.key.length === 1) {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [isMockMode, cart, produtos]);
 
   const addToCart = (produto: Produto) => {
     if (produto.estoque <= 0) {
@@ -281,16 +362,37 @@ export const PDV: React.FC = () => {
       {/* Catálogo de Produtos (Esquerda - 2 colunas) */}
       <div className="lg:col-span-2 space-y-4">
         
-        {/* Barra de Pesquisa */}
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Pesquise produtos por nome ou SKU..."
-            className="pl-10 h-12 text-base rounded-xl"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        {/* Barra de Pesquisa e Scanner Banner */}
+        <div className="flex flex-col sm:flex-row gap-4 items-stretch">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Pesquise produtos por nome ou SKU..."
+              className="pl-10 h-12 text-base rounded-xl"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (produtos.length === 1) {
+                    addToCart(produtos[0]);
+                    setSearchTerm('');
+                  } else if (searchTerm.trim()) {
+                    handleBarcodeScanned(searchTerm.trim());
+                    setSearchTerm('');
+                  }
+                }
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-500/2 shrink-0 shadow-premium">
+            <Barcode className="h-6 w-6 text-indigo-500 animate-pulse shrink-0" />
+            <div className="text-left">
+              <p className="text-[9px] text-muted-foreground font-extrabold uppercase leading-none">Scanner Global</p>
+              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-1">Apenas aponte e scaneie!</p>
+            </div>
+          </div>
         </div>
 
         {/* Listagem do Catálogo */}
