@@ -34,7 +34,7 @@ export const TableRow: React.FC<React.HTMLAttributes<HTMLTableRowElement>> = ({ 
   );
 };
 
-export const TableHead: React.FC<React.HTMLAttributes<HTMLTableCellElement>> = ({ children, className = '', ...props }) => {
+export const TableHead: React.FC<React.ThHTMLAttributes<HTMLTableCellElement>> = ({ children, className = '', ...props }) => {
   return (
     <th className={`h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 ${className}`} {...props}>
       {children}
@@ -42,7 +42,7 @@ export const TableHead: React.FC<React.HTMLAttributes<HTMLTableCellElement>> = (
   );
 };
 
-export const TableCell: React.FC<React.HTMLAttributes<HTMLTableCellElement>> = ({ children, className = '', ...props }) => {
+export const TableCell: React.FC<React.TdHTMLAttributes<HTMLTableCellElement>> = ({ children, className = '', ...props }) => {
   return (
     <td className={`p-4 align-middle [&:has([role=checkbox])]:pr-0 ${className}`} {...props}>
       {children}

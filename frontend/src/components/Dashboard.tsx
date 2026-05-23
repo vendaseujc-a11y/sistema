@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/card.tsx';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './ui/table.tsx';
+import { Button } from './ui/button.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
   TrendingUp, DollarSign, AlertTriangle, 

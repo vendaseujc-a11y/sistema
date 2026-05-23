@@ -6,7 +6,7 @@ import { Button } from './ui/button.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, Check, 
-  Sparkles, Mail, Send, AlertTriangle 
+  Sparkles, Mail 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 

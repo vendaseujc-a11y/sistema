@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from './ui/card.tsx';
+import { Card, CardContent } from './ui/card.tsx';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './ui/table.tsx';
 import { Button } from './ui/button.tsx';
 import { Input } from './ui/input.tsx';
 import { Dialog } from './ui/dialog.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
-  Plus, PackageOpen, ChevronLeft, ChevronRight, 
-  AlertTriangle, History, RefreshCw, Sparkles 
+  Plus, PackageOpen, ChevronLeft, ChevronRight, History 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 
