@@ -72,3 +72,30 @@ export interface CheckoutPayload {
     preco_unitario: number;
   }[];
 }
+
+// ============================================================
+// Mercado Livre Integration Types
+// ============================================================
+
+export interface MLStatus {
+  connected: boolean;
+  seller_id: string | null;
+  vendas_ml: VendaML[];
+}
+
+export interface VendaML {
+  id: string;
+  total: number;
+  cliente_email?: string | null;
+  ml_order_id: string | null;
+  origem: string;
+  created_at: string;
+  itens_venda?: {
+    quantidade: number;
+    preco_unitario: number;
+    produtos?: {
+      nome: string;
+      sku: string;
+    } | null;
+  }[];
+}

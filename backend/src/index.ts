@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import apiRouter from './routes/api.js';
+import mlAuthRouter from './routes/mlAuth.js';
+import mlWebhookRouter from './routes/mlWebhook.js';
 
 dotenv.config();
 
@@ -18,6 +20,12 @@ app.use(express.json());
 
 // Adicionar rotas da API
 app.use('/api', apiRouter);
+
+// Rotas de autenticação OAuth (ML, futuras integrações)
+app.use('/auth', mlAuthRouter);
+
+// Webhooks externos (ML notificações automáticas)
+app.use('/webhooks', mlWebhookRouter);
 
 // Rota de status básica
 app.get('/health', (req, res) => {

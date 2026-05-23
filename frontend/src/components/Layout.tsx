@@ -3,12 +3,12 @@ import { useAuth } from '../context/AuthContext.tsx';
 import { Button } from './ui/button.tsx';
 import { 
   Sparkles, LayoutDashboard, ShoppingCart, 
-  Package, LogOut, Sun, Moon, User as UserIcon, Menu, X 
+  Package, LogOut, Sun, Moon, User as UserIcon, Menu, X, Plug2
 } from 'lucide-react';
 
 interface LayoutProps {
-  currentTab: 'dashboard' | 'pdv' | 'estoque';
-  setCurrentTab: (tab: 'dashboard' | 'pdv' | 'estoque') => void;
+  currentTab: 'dashboard' | 'pdv' | 'estoque' | 'integracoes';
+  setCurrentTab: (tab: 'dashboard' | 'pdv' | 'estoque' | 'integracoes') => void;
   children: React.ReactNode;
 }
 
@@ -48,6 +48,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
     { id: 'pdv', label: 'PDV (Frente de Caixa)', icon: <ShoppingCart className="h-5 w-5" /> },
     { id: 'estoque', label: 'Estoque', icon: <Package className="h-5 w-5" /> },
+    { id: 'integracoes', label: 'Integrações', icon: <Plug2 className="h-5 w-5" /> },
   ] as const;
 
   return (
@@ -179,7 +180,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
               <Menu className="h-5 w-5" />
             </Button>
             <h2 className="text-lg font-bold capitalize tracking-tight md:text-xl">
-              {currentTab === 'pdv' ? 'Frente de Caixa (PDV)' : currentTab}
+              {currentTab === 'pdv' ? 'Frente de Caixa (PDV)' : currentTab === 'integracoes' ? 'Integrações' : currentTab}
             </h2>
           </div>
 

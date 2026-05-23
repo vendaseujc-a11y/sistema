@@ -6,11 +6,21 @@ import { Layout } from './components/Layout.tsx';
 import { Dashboard } from './components/Dashboard.tsx';
 import { PDV } from './components/PDV.tsx';
 import { Estoque } from './components/Estoque.tsx';
+import { Integracoes } from './components/Integracoes.tsx';
 
 // Componente Core interno para gerenciar visualização condicional baseada na autenticação
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'pdv' | 'estoque'>('dashboard');
+  const [currentTab, setCurrentTab] = useState<'dashboard' | 'pdv' | 'estoque' | 'integracoes'>('dashboard');
+
+  // Verificar se há parâmetro de tab na URL (ex: após retorno do OAuth ML)
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab') as 'dashboard' | 'pdv' | 'estoque' | 'integracoes' | null;
+    if (tab && ['dashboard', 'pdv', 'estoque', 'integracoes'].includes(tab)) {
+      setCurrentTab(tab);
+    }
+  }, []);
 
   // Tela de Carregamento Premium
   if (loading) {
@@ -38,6 +48,8 @@ const AppContent: React.FC = () => {
         return <PDV />;
       case 'estoque':
         return <Estoque />;
+      case 'integracoes':
+        return <Integracoes />;
       default:
         return <Dashboard />;
     }
