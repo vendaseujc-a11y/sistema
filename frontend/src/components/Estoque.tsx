@@ -335,7 +335,8 @@ export const Estoque: React.FC = () => {
             cfop: novoCfop || null,
             icms_aliquota: novoIcms ? parseFloat(novoIcms) : null,
             pis_aliquota: novoPis ? parseFloat(novoPis) : null,
-            cofins_aliquota: novoCofins ? parseFloat(novoCofins) : null
+            cofins_aliquota: novoCofins ? parseFloat(novoCofins) : null,
+            usuario_id: user?.id
           })
           .select()
           .single();
@@ -360,7 +361,8 @@ export const Estoque: React.FC = () => {
               sku: novoSku,
               preco: precoNum,
               estoque: estoqueInt,
-              estoque_minimo: estoqueMinInt
+              estoque_minimo: estoqueMinInt,
+              usuario_id: user?.id
             })
             .select()
             .single();
@@ -724,7 +726,8 @@ export const Estoque: React.FC = () => {
               estoque: xmlItem.quantidade,
               estoque_minimo: 3,
               ncm: xmlItem.ncm || null,
-              cfop: xmlItem.cfop || null
+              cfop: xmlItem.cfop || null,
+              usuario_id: user?.id
             })
             .select()
             .single();

@@ -143,7 +143,8 @@ export const Clientes: React.FC = () => {
               nome: newClient.nome,
               email: newClient.email,
               documento: newClient.documento,
-              telefone: newClient.telefone
+              telefone: newClient.telefone,
+              usuario_id: user?.id
             });
           error = insertErr;
         }

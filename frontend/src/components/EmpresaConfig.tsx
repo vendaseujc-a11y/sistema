@@ -153,7 +153,8 @@ export const EmpresaConfig: React.FC = () => {
             endereco: empresa.endereco,
             telefone: empresa.telefone,
             certificado_a1_nome: empresa.certificado_a1_nome,
-            certificado_a1_validade: empresa.certificado_a1_validade
+            certificado_a1_validade: empresa.certificado_a1_validade,
+            usuario_id: user?.id
           });
         error = insertError;
       }
