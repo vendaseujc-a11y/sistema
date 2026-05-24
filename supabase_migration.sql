@@ -108,10 +108,14 @@ AS $$
 DECLARE
     v_venda_id UUID;
     v_item RECORD;
+    v_user_id UUID;
 BEGIN
-    -- 1. Inserir a venda
-    INSERT INTO public.vendas (total, cliente_email, created_at)
-    VALUES (p_total, p_cliente_email, NOW())
+    -- Obter o ID do usuário autenticado que está invocando a função
+    v_user_id := auth.uid();
+
+    -- 1. Inserir a venda com o respectivo usuario_id
+    INSERT INTO public.vendas (total, cliente_email, created_at, usuario_id)
+    VALUES (p_total, p_cliente_email, NOW(), v_user_id)
     RETURNING id INTO v_venda_id;
 
     -- 2. Inserir itens de venda e abater estoque correspondente
@@ -120,15 +124,15 @@ BEGIN
         INSERT INTO public.itens_venda (venda_id, produto_id, quantidade, preco_unitario)
         VALUES (v_venda_id, v_item.produto_id, v_item.quantidade, v_item.preco_unitario);
 
-        -- Reduzir saldo de estoque do produto
+        -- Reduzir saldo de estoque do produto (garantindo isolamento pelo usuario logado ou nulo se antigo)
         UPDATE public.produtos
         SET estoque = estoque - v_item.quantidade,
             updated_at = NOW()
-        WHERE id = v_item.produto_id;
+        WHERE id = v_item.produto_id AND (usuario_id IS NULL OR usuario_id = v_user_id);
 
-        -- Registrar log auditável de estoque
-        INSERT INTO public.estoque_logs (produto_id, quantidade, tipo, descricao, created_at)
-        VALUES (v_item.produto_id, -v_item.quantidade, 'venda', 'Saída por Venda (RPC: ' || v_venda_id || ')', NOW());
+        -- Registrar log auditável de estoque com o respectivo usuario_id
+        INSERT INTO public.estoque_logs (produto_id, quantidade, tipo, descricao, created_at, usuario_id)
+        VALUES (v_item.produto_id, -v_item.quantidade, 'venda', 'Saída por Venda (RPC: ' || v_venda_id || ')', NOW(), v_user_id);
     END LOOP;
 
     RETURN v_venda_id;
