@@ -63,10 +63,10 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
             <Sparkles className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="font-extrabold text-sm tracking-tight bg-gradient-to-r from-primary to-violet-500 bg-clip-text text-transparent">
-              PDV & Estoque
+            <h1 className="font-extrabold text-xs tracking-tight bg-gradient-to-r from-primary to-violet-500 bg-clip-text text-transparent">
+              Grupo VNI Vender +
             </h1>
-            <p className="text-[10px] text-muted-foreground font-semibold">FREE TIER OPTIMIZED</p>
+            <p className="text-[9px] text-muted-foreground font-semibold">Sistema Completo PDV e Estoque</p>
           </div>
         </div>
 
@@ -125,7 +125,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
             <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
-                <span className="font-bold text-sm">PDV & Estoque</span>
+                <span className="font-bold text-sm">Grupo VNI Vender +</span>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(false)}>
                 <X className="h-5 w-5" />
