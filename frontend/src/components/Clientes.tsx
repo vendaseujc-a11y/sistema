@@ -365,22 +365,40 @@ export const Clientes: React.FC = () => {
             />
           </div>
 
-          <div className="flex gap-2 justify-end pt-4 border-t border-border/50">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => setIsOpen(false)}
-              disabled={loading}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={loading}
-              className="shadow-glow-primary"
-            >
-              {loading ? 'Salvando...' : editingCliente ? 'Salvar Alterações' : 'Cadastrar Cliente'}
-            </Button>
+          <div className="flex gap-2 justify-between pt-4 border-t border-border/50">
+            {editingCliente ? (
+              <Button 
+                type="button" 
+                variant="ghost" 
+                className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                onClick={() => {
+                  handleDelete(editingCliente.id);
+                  setIsOpen(false);
+                }}
+                disabled={loading}
+              >
+                Excluir Cadastro
+              </Button>
+            ) : (
+              <div />
+            )}
+            <div className="flex gap-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setIsOpen(false)}
+                disabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={loading}
+                className="shadow-glow-primary"
+              >
+                {loading ? 'Salvando...' : editingCliente ? 'Salvar Alterações' : 'Cadastrar Cliente'}
+              </Button>
+            </div>
           </div>
         </form>
       </Dialog>
