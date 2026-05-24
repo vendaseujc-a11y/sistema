@@ -185,3 +185,20 @@ CREATE POLICY "Vendas: isolamento por usuario" ON public.vendas
 
 CREATE POLICY "Estoque Logs: isolamento por usuario" ON public.estoque_logs
     FOR ALL TO authenticated USING (auth.uid() = usuario_id) WITH CHECK (auth.uid() = usuario_id);
+
+-- =========================================================================
+-- 7. FUNÇÃO RPC PARA EXCLUSÃO DO PRÓPRIO USUÁRIO (LOGIN & CREDENCIAIS)
+-- =========================================================================
+-- Permite que o próprio usuário autenticado delete sua conta e credenciais
+-- do Supabase Auth de forma segura a partir do frontend.
+
+CREATE OR REPLACE FUNCTION public.deletar_proprio_usuario()
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    -- Deletar o usuário da tabela de autenticação correspondente ao ID logado
+    DELETE FROM auth.users WHERE id = auth.uid();
+END;
+$$;

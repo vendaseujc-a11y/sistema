@@ -255,10 +255,10 @@ export const EmpresaConfig: React.FC = () => {
   };
 
   const handleResetAllData = async () => {
-    const confirm1 = window.confirm('ATENÇÃO: Você está prestes a EXCLUIR TODOS OS DADOS cadastrados no seu usuário no sistema (produtos, clientes, vendas, logs e dados de empresa).\n\nEsta ação é irreversível e apagará toda a sua configuração. Deseja prosseguir?');
+    const confirm1 = window.confirm('ATENÇÃO MÁXIMA: Você está prestes a EXCLUIR SUA CONTA E TODOS OS DADOS cadastrados no sistema (produtos, clientes, vendas, logs, dados de empresa e suas credenciais de login).\n\nEsta ação é IRREVERSÍVEL e você perderá o acesso definitivo ao site. Deseja prosseguir?');
     if (!confirm1) return;
 
-    const confirm2 = window.confirm('Deseja realmente confirmar? Todos os seus dados serão apagados permanentemente do banco de dados/navegador.');
+    const confirm2 = window.confirm('Deseja REALMENTE confirmar? Sua conta de login e todas as suas informações comerciais serão excluídas permanentemente do Supabase/navegador.');
     if (!confirm2) return;
 
     setLoading(true);
@@ -279,8 +279,11 @@ export const EmpresaConfig: React.FC = () => {
         localStorage.removeItem(`mock_logs${prefix}`);
         localStorage.removeItem(`mock_clientes${prefix}`);
         localStorage.removeItem(`mock_empresa${prefix}`);
+        
+        // Excluir as credenciais de login simuladas do site
+        localStorage.removeItem('mock_user');
 
-        toast('Sistema Redefinido', 'Todos os seus dados locais foram excluídos.', 'success');
+        toast('Conta e Dados Excluídos', 'Todos os seus dados locais e credenciais de login foram removidos.', 'success');
         setTimeout(() => {
           window.location.reload();
         }, 1500);
@@ -322,7 +325,19 @@ export const EmpresaConfig: React.FC = () => {
         .delete()
         .eq('usuario_id', user.id);
 
-      toast('Sistema Limpo!', 'Todos os seus dados foram excluídos com sucesso do Supabase.', 'success');
+      // 6. Chamar a RPC segura de banco de dados para auto-exclusão do login no Supabase Auth
+      try {
+        const { error: deleteUserErr } = await supabase.rpc('deletar_proprio_usuario');
+        if (deleteUserErr) throw deleteUserErr;
+        toast('Sucesso!', 'Todos os seus dados e credenciais de login foram excluídos com sucesso.', 'success');
+      } catch (rpcErr: any) {
+        console.warn('Erro ao chamar RPC deletar_proprio_usuario. Tentando limpar apenas sessão:', rpcErr);
+        toast('Dados Excluídos!', 'Dados apagados com sucesso do banco comercial. Limpando credenciais locais...', 'info');
+      }
+
+      // 7. Efetuar logout definitivo e limpar sessão local
+      await supabase.auth.signOut();
+      
       setTimeout(() => {
         window.location.reload();
       }, 1500);
@@ -563,17 +578,17 @@ export const EmpresaConfig: React.FC = () => {
         <CardHeader className="pb-4 border-b border-red-500/20">
           <CardTitle className="text-base flex items-center gap-2 text-red-500 font-bold">
             <Trash2 className="h-5 w-5 animate-pulse" />
-            Zona de Perigo: Redefinição Geral do Sistema
+            Zona de Perigo: Exclusão de Conta & Dados
           </CardTitle>
           <CardDescription className="text-xs text-red-400/80">
-            Ações de limpeza profunda e exclusão permanente de todas as bases de dados.
+            Ações de exclusão permanente de dados comerciais, credenciais e login do site.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="max-w-2xl">
-            <p className="text-sm font-semibold text-foreground">Excluir Todos os Dados Cadastrados</p>
+            <p className="text-sm font-semibold text-foreground">Excluir Todos os Dados & Credenciais de Login</p>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Esta ação apagará de forma permanente todos os seus produtos cadastrados, histórico de vendas, logs de estoque, clientes registrados e as configurações fiscais da sua empresa. Suas credenciais de login serão mantidas e a base iniciará totalmente zerada.
+              Esta ação apagará permanentemente toda a sua conta do sistema, incluindo suas credenciais de login, cadastro de produtos, histórico de vendas, logs de estoque, clientes registrados e dados cadastrais da empresa no banco de dados.
             </p>
           </div>
           <Button 
@@ -582,7 +597,7 @@ export const EmpresaConfig: React.FC = () => {
             className="bg-red-500 hover:bg-red-600 text-white shadow-glow-destructive self-start sm:self-auto shrink-0 transition-transform active:scale-95"
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            {loading ? 'Limpando...' : 'Excluir Todos os Dados'}
+            {loading ? 'Excluindo...' : 'Excluir Conta e Dados'}
           </Button>
         </CardContent>
       </Card>
