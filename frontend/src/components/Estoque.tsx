@@ -307,37 +307,94 @@ export const Estoque: React.FC = () => {
 
       // --- CADASTRO REAL NO SUPABASE ---
       // 1. Inserir na tabela 'produtos'
-      const { data: newProd, error: insertError } = await supabase
-        .from('produtos')
-        .insert({
-          nome: novoNome,
-          sku: novoSku,
-          preco: precoNum,
-          preco_custo: precoCustoNum,
-          estoque: estoqueInt,
-          estoque_minimo: estoqueMinInt,
-          ncm: novoNcm || null,
-          cfop: novoCfop || null,
-          icms_aliquota: novoIcms ? parseFloat(novoIcms) : null,
-          pis_aliquota: novoPis ? parseFloat(novoPis) : null,
-          cofins_aliquota: novoCofins ? parseFloat(novoCofins) : null
-        })
-        .select()
-        .single();
+      let newProd = null;
+      let insertError = null;
+      try {
+        const { data, error } = await supabase
+          .from('produtos')
+          .insert({
+            nome: novoNome,
+            sku: novoSku,
+            preco: precoNum,
+            preco_custo: precoCustoNum,
+            estoque: estoqueInt,
+            estoque_minimo: estoqueMinInt,
+            ncm: novoNcm || null,
+            cfop: novoCfop || null,
+            icms_aliquota: novoIcms ? parseFloat(novoIcms) : null,
+            pis_aliquota: novoPis ? parseFloat(novoPis) : null,
+            cofins_aliquota: novoCofins ? parseFloat(novoCofins) : null
+          })
+          .select()
+          .single();
+        newProd = data;
+        insertError = error;
+      } catch (insertErr: any) {
+        insertError = insertErr;
+      }
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        const isColumnError = insertError.message?.includes('ncm') || 
+                              insertError.message?.includes('cfop') || 
+                              insertError.message?.includes('aliquota') || 
+                              insertError.message?.includes('preco_custo');
+        
+        if (isColumnError) {
+          console.warn('Novas colunas ausentes no Supabase. Tentando cadastro simplificado...');
+          const { data: newProdSimplified, error: simplifiedErr } = await supabase
+            .from('produtos')
+            .insert({
+              nome: novoNome,
+              sku: novoSku,
+              preco: precoNum,
+              estoque: estoqueInt,
+              estoque_minimo: estoqueMinInt
+            })
+            .select()
+            .single();
+
+          if (simplifiedErr) throw simplifiedErr;
+          
+          if (newProdSimplified && estoqueInt > 0) {
+            try {
+              await supabase
+                .from('estoque_logs')
+                .insert({
+                  produto_id: newProdSimplified.id,
+                  quantidade: estoqueInt,
+                  tipo: 'entrada',
+                  descricao: 'Estoque inicial do novo produto (Simplificado).'
+                });
+            } catch (logErr) {
+              console.warn('Erro ao inserir log no Supabase (ignorando):', logErr);
+            }
+          }
+
+          toast('Produto Cadastrado!', `"${novoNome}" cadastrado sem dados fiscais (Banco desatualizado).`, 'info');
+          setIsNovoProdutoModalOpen(false);
+          resetNovoForm();
+          fetchInventory(currentPage);
+          return;
+        } else {
+          throw insertError;
+        }
+      }
 
       // 2. Inserir log de estoque
       if (newProd && estoqueInt > 0) {
-        await supabase
-          .from('estoque_logs')
-          .insert({
-            produto_id: newProd.id,
-            quantidade: estoqueInt,
-            tipo: 'entrada',
-            descricao: 'Estoque inicial do novo produto.',
-            usuario_id: (await supabase.auth.getUser()).data.user?.id
-          });
+        try {
+          await supabase
+            .from('estoque_logs')
+            .insert({
+              produto_id: newProd.id,
+              quantidade: estoqueInt,
+              tipo: 'entrada',
+              descricao: 'Estoque inicial do novo produto.',
+              usuario_id: (await supabase.auth.getUser()).data.user?.id
+            });
+        } catch (logErr) {
+          console.warn('Erro ao inserir log no Supabase (ignorando):', logErr);
+        }
       }
 
       toast('Sucesso!', `Produto "${novoNome}" adicionado com sucesso ao Supabase!`, 'success');
@@ -347,6 +404,71 @@ export const Estoque: React.FC = () => {
 
     } catch (err: any) {
       console.error('Erro ao cadastrar produto:', err);
+      
+      // Fallback definitivo local se der erro de banco
+      const isDbError = err?.message?.includes('produtos') || 
+                        err?.message?.includes('estoque_logs') || 
+                        err?.message?.includes('schema cache') || 
+                        err?.message?.includes('relation') ||
+                        err?.code === '42P01' || 
+                        err?.code === 'PGRST116';
+
+      if (isDbError || !isMockMode) {
+        console.warn('Caindo para cadastro local de produto devido a erro de banco/tabela...');
+        try {
+          const products = getMockProducts();
+          const logsList = getMockLogs();
+
+          if (products.some(p => p.sku === novoSku)) {
+            toast('Erro de SKU', 'Já existe um produto com este SKU no cadastro local.', 'error');
+            setNovoLoading(false);
+            return;
+          }
+
+          const newId = 'prod-' + Math.random().toString(36).substring(2, 9);
+          const newProduct: Produto = {
+            id: newId,
+            nome: novoNome,
+            sku: novoSku,
+            preco: precoNum,
+            preco_custo: precoCustoNum,
+            estoque: estoqueInt,
+            estoque_minimo: estoqueMinInt,
+            imagem_url: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            ncm: novoNcm || null,
+            cfop: novoCfop || null,
+            icms_aliquota: novoIcms ? parseFloat(novoIcms) : null,
+            pis_aliquota: novoPis ? parseFloat(novoPis) : null,
+            cofins_aliquota: novoCofins ? parseFloat(novoCofins) : null
+          };
+
+          const newLog: EstoqueLog = {
+            id: 'log-' + Math.random().toString(36).substring(2, 9),
+            produto_id: newId,
+            quantidade: estoqueInt,
+            tipo: 'entrada',
+            descricao: 'Carga de estoque inicial (Salvo Localmente)',
+            usuario_id: 'd9b736b4-24ff-4fc9-b684-2a62886f3458',
+            created_at: new Date().toISOString(),
+            produto: { nome: novoNome, sku: novoSku }
+          };
+
+          saveMockProducts([newProduct, ...products]);
+          saveMockLogs([newLog, ...logsList]);
+
+          toast('Salvo Localmente', `"${novoNome}" cadastrado localmente (Tabela de produtos ausente/desatualizada).`, 'info');
+          setIsNovoProdutoModalOpen(false);
+          resetNovoForm();
+          fetchInventory(currentPage);
+          setNovoLoading(false);
+          return;
+        } catch (fallbackErr) {
+          console.error('Falha crítica ao executar fallback local para novo produto:', fallbackErr);
+        }
+      }
+
       toast('Erro de Cadastro', err.message || 'Verifique se o SKU é único.', 'error');
     } finally {
       setNovoLoading(false);

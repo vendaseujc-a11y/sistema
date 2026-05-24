@@ -60,13 +60,29 @@ export const PDV: React.FC = () => {
         return;
       }
       
-      const { data: clientsData } = await supabase.from('clientes').select('*').order('nome');
-      if (clientsData) setClientes(clientsData);
+      const { data: clientsData, error: clientsErr } = await supabase.from('clientes').select('*').order('nome');
+      if (clientsErr) {
+        console.warn('Erro ao carregar clientes do Supabase (caindo para local):', clientsErr);
+        setClientes(getMockClientes());
+      } else if (clientsData) {
+        setClientes(clientsData);
+      } else {
+        setClientes(getMockClientes());
+      }
       
-      const { data: companyData } = await supabase.from('empresa_fiscal').select('*').maybeSingle();
-      if (companyData) setEmpresa(companyData);
+      const { data: companyData, error: companyErr } = await supabase.from('empresa_fiscal').select('*').maybeSingle();
+      if (companyErr) {
+        console.warn('Erro ao carregar dados da empresa do Supabase (caindo para local):', companyErr);
+        setEmpresa(getMockEmpresa());
+      } else if (companyData) {
+        setEmpresa(companyData);
+      } else {
+        setEmpresa(getMockEmpresa());
+      }
     } catch (err) {
       console.error('Erro ao buscar dados cadastrais no PDV:', err);
+      setClientes(getMockClientes());
+      setEmpresa(getMockEmpresa());
     }
   };
 
@@ -100,23 +116,34 @@ export const PDV: React.FC = () => {
         setClienteEmail(newClient.email);
         toast('Cliente Cadastrado!', `"${newClient.nome}" cadastrado com sucesso localmente.`, 'success');
       } else {
-        const { data, error } = await supabase
-          .from('clientes')
-          .insert({
-            nome: newClient.nome,
-            email: newClient.email,
-            documento: newClient.documento,
-            telefone: newClient.telefone
-          })
-          .select()
-          .single();
+        try {
+          const { data, error } = await supabase
+            .from('clientes')
+            .insert({
+              nome: newClient.nome,
+              email: newClient.email,
+              documento: newClient.documento,
+              telefone: newClient.telefone
+            })
+            .select()
+            .single();
 
-        if (error) throw error;
-        
-        setClientes(prev => [data, ...prev]);
-        setSelectedClienteId(data.id);
-        setClienteEmail(data.email);
-        toast('Cliente Cadastrado!', `"${data.nome}" cadastrado no Supabase.`, 'success');
+          if (error) throw error;
+          
+          setClientes(prev => [data, ...prev]);
+          setSelectedClienteId(data.id);
+          setClienteEmail(data.email);
+          toast('Cliente Cadastrado!', `"${data.nome}" cadastrado no Supabase.`, 'success');
+        } catch (dbErr: any) {
+          console.warn('Erro ao inserir cliente no Supabase, caindo para gravação local:', dbErr);
+          const list = getMockClientes();
+          const updatedList = [newClient, ...list];
+          saveMockClientes(updatedList);
+          setClientes(updatedList);
+          setSelectedClienteId(newClient.id);
+          setClienteEmail(newClient.email);
+          toast('Salvo Localmente', `"${newClient.nome}" cadastrado localmente (Tabela ausente no Supabase).`, 'info');
+        }
       }
 
       setIsNovoClienteOpen(false);
@@ -547,6 +574,91 @@ export const PDV: React.FC = () => {
       fetchProducts('');
     } catch (err: any) {
       console.error('Erro na venda (checkout):', err);
+
+      // Fallback definitivo para Local Storage para não perder a venda
+      const isDbError = err?.message?.includes('vendas') || 
+                        err?.message?.includes('itens_venda') || 
+                        err?.message?.includes('schema cache') || 
+                        err?.message?.includes('relation') ||
+                        err?.code === '42P01' || 
+                        err?.code === 'PGRST116';
+
+      if (isDbError || !isMockMode) {
+        console.warn('Executando fallback local para gravação de venda devido a erro de banco/tabela...');
+        try {
+          const selectedCli = clientes.find(c => c.id === selectedClienteId);
+          const mockProducts = getMockProducts();
+          const mockSales = getMockSales();
+          const mockLogs = getMockLogs();
+
+          // 1. Validar e abater estoque localmente
+          const updatedProducts = mockProducts.map(p => {
+            const cartItem = cart.find(ci => ci.produto.id === p.id);
+            if (cartItem) {
+              return {
+                ...p,
+                estoque: Math.max(0, p.estoque - cartItem.quantidade),
+                updated_at: new Date().toISOString()
+              };
+            }
+            return p;
+          });
+
+          // 2. Criar a venda mock com dados fiscais/comerciais
+          const newSaleId = 'venda-local-' + Math.random().toString(36).substring(2, 9);
+          const newSale: Venda = {
+            id: newSaleId,
+            total: cartTotal,
+            cliente_email: clienteEmail || null,
+            cliente_id: selectedClienteId || null,
+            cliente_nome: selectedCli?.nome || null,
+            cliente_documento: selectedCli?.documento || null,
+            tipo_pagamento: tipoPagamento,
+            usuario_id: 'd9b736b4-24ff-4fc9-b684-2a62886f3458',
+            created_at: new Date().toISOString(),
+            itens: cart.map(ci => ({
+              id: 'item-' + Math.random().toString(36).substring(2, 9),
+              venda_id: newSaleId,
+              produto_id: ci.produto.id,
+              quantidade: ci.quantidade,
+              preco_unitario: ci.produto.preco,
+              produto: { nome: ci.produto.nome, sku: ci.produto.sku }
+            }))
+          };
+
+          // 3. Criar Logs de Estoque
+          const newLogs: EstoqueLog[] = cart.map(ci => ({
+            id: 'log-' + Math.random().toString(36).substring(2, 9),
+            produto_id: ci.produto.id,
+            quantidade: -ci.quantidade,
+            tipo: 'venda',
+            descricao: `Saída por Venda ID: ${newSaleId} (Salvo Localmente)`,
+            usuario_id: 'd9b736b4-24ff-4fc9-b684-2a62886f3458',
+            created_at: new Date().toISOString(),
+            produto: { nome: ci.produto.nome, sku: ci.produto.sku }
+          }));
+
+          // 4. Salvar no localStorage
+          saveMockProducts(updatedProducts);
+          saveMockSales([newSale, ...mockSales]);
+          saveMockLogs([...newLogs, ...mockLogs]);
+
+          setLatestSale(newSale);
+          setIsReceiptOpen(true);
+          toast('Salvo Localmente', 'Tabela de vendas ausente no Supabase. Venda concluída e salva localmente.', 'info');
+          
+          setCart([]);
+          setClienteEmail('');
+          setSelectedClienteId('');
+          setSearchTerm('');
+          fetchProducts('');
+          setCheckoutLoading(false);
+          return;
+        } catch (fallbackErr) {
+          console.error('Falha crítica ao executar fallback local:', fallbackErr);
+        }
+      }
+
       toast('Transação Negada', err.message || 'Erro inesperado ao realizar venda.', 'error');
     } finally {
       setCheckoutLoading(false);
