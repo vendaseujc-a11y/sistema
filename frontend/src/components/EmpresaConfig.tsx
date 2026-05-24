@@ -244,222 +244,336 @@ export const EmpresaConfig: React.FC = () => {
     toast('Certificado Removido', 'Nenhum certificado ativo no momento.', 'info');
   };
 
-  return (
-    <div className="grid gap-6 md:grid-cols-2 animate-fade-in items-start">
+  const handleResetAllData = async () => {
+    const confirm1 = window.confirm('ATENÇÃO: Você está prestes a EXCLUIR TODOS OS DADOS cadastrados no seu usuário no sistema (produtos, clientes, vendas, logs e dados de empresa).\n\nEsta ação é irreversível e apagará toda a sua configuração. Deseja prosseguir?');
+    if (!confirm1) return;
+
+    const confirm2 = window.confirm('Deseja realmente confirmar? Todos os seus dados serão apagados permanentemente do banco de dados/navegador.');
+    if (!confirm2) return;
+
+    setLoading(true);
+    try {
+      if (isMockMode) {
+        // --- LIMPAR MOCK DO LOCAL STORAGE DO USUÁRIO LOGADO ---
+        const mockUserStr = localStorage.getItem('mock_user');
+        let prefix = '';
+        if (mockUserStr) {
+          try {
+            const mockUser = JSON.parse(mockUserStr);
+            if (mockUser?.email) prefix = `_${mockUser.email}`;
+          } catch (e) {}
+        }
+
+        localStorage.removeItem(`mock_products${prefix}`);
+        localStorage.removeItem(`mock_sales${prefix}`);
+        localStorage.removeItem(`mock_logs${prefix}`);
+        localStorage.removeItem(`mock_clientes${prefix}`);
+        localStorage.removeItem(`mock_empresa${prefix}`);
+
+        toast('Sistema Redefinido', 'Todos os seus dados locais foram excluídos.', 'success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+        return;
+      }
+
+      // --- LIMPAR BANCO DE DADOS REAL NO SUPABASE ---
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado no Supabase.');
+
+      // Excluir em ordem respeitando restrições RLS e chaves estrangeiras
+      // 1. Logs de estoque
+      await supabase
+        .from('estoque_logs')
+        .delete()
+        .eq('usuario_id', user.id);
       
-      {/* Cadastro da Empresa */}
-      <Card className="border-border/60 shadow-lg">
-        <CardHeader className="pb-4 border-b border-border/80">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-indigo-500" />
-            Dados Cadastrais da Empresa
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Informações corporativas essenciais para emissão de documentos fiscais.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-4">
-          <form onSubmit={handleSaveProfile} className="space-y-4">
-            
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="Razão Social"
-                placeholder="Razão Social da Empresa"
-                required
-                value={empresa.razao_social}
-                onChange={(e) => setEmpresa({ ...empresa, razao_social: e.target.value })}
-              />
-              <Input
-                label="Nome Fantasia"
-                placeholder="Nome Fantasia da Loja"
-                required
-                value={empresa.nome_fantasia}
-                onChange={(e) => setEmpresa({ ...empresa, nome_fantasia: e.target.value })}
-              />
-            </div>
+      // 2. Vendas (exclui itens_venda por cascata RLS/Postgres)
+      await supabase
+        .from('vendas')
+        .delete()
+        .eq('usuario_id', user.id);
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="CNPJ"
-                placeholder="00.000.000/0000-00"
-                required
-                value={empresa.cnpj}
-                onChange={(e) => setEmpresa({ ...empresa, cnpj: e.target.value })}
-              />
-              <Input
-                label="Inscrição Estadual"
-                placeholder="Isento ou IE do Estado"
-                required
-                value={empresa.inscricao_estadual}
-                onChange={(e) => setEmpresa({ ...empresa, inscricao_estadual: e.target.value })}
-              />
-            </div>
+      // 3. Produtos
+      await supabase
+        .from('produtos')
+        .delete()
+        .eq('usuario_id', user.id);
 
-            <div className="w-full space-y-1.5">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Regime Tributário
-              </label>
-              <select
-                className="premium-input bg-background"
-                value={empresa.regime_tributario}
-                onChange={(e) => setEmpresa({ ...empresa, regime_tributario: e.target.value })}
-              >
-                <option value="Simples Nacional">Simples Nacional</option>
-                <option value="Simples Nacional - Excesso de Sublimite">Simples Nacional - Excesso de Sublimite</option>
-                <option value="Lucro Presumido">Lucro Presumido</option>
-                <option value="Lucro Real">Lucro Real</option>
-              </select>
-            </div>
+      // 4. Clientes
+      await supabase
+        .from('clientes')
+        .delete()
+        .eq('usuario_id', user.id);
 
-            <Input
-              label="Endereço Fiscal Completo"
-              placeholder="Rua, Número, Bairro, Cidade/UF e CEP"
-              required
-              value={empresa.endereco}
-              onChange={(e) => setEmpresa({ ...empresa, endereco: e.target.value })}
-            />
+      // 5. Empresa Fiscal
+      await supabase
+        .from('empresa_fiscal')
+        .delete()
+        .eq('usuario_id', user.id);
 
-            <Input
-              label="Telefone Comercial"
-              placeholder="Ex: (11) 3333-3333"
-              required
-              value={empresa.telefone}
-              onChange={(e) => setEmpresa({ ...empresa, telefone: e.target.value })}
-            />
+      toast('Sistema Limpo!', 'Todos os seus dados foram excluídos com sucesso do Supabase.', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
 
-            <div className="flex justify-end pt-2 border-t border-border/40">
-              <Button type="submit" disabled={loading} className="w-full sm:w-auto shadow-glow-primary">
-                {loading ? 'Salvando...' : 'Salvar Dados Fiscais'}
-              </Button>
-            </div>
+    } catch (err: any) {
+      console.error('Erro ao redefinir sistema:', err);
+      toast('Erro de Limpeza', err.message || 'Falha ao redefinir base de dados Supabase.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Certificado Digital A1 */}
-      <Card className="border-border/60 shadow-lg">
-        <CardHeader className="pb-4 border-b border-border/80">
-          <CardTitle className="text-base flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-emerald-500" />
-            Certificado Digital A1 (.pfx / .p12)
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Vincule seu certificado digital modelo A1 para assinatura eletrônica de notas fiscais.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-4 space-y-4">
-
-          {/* Status do Certificado Ativo */}
-          {empresa.certificado_a1_nome ? (
-            <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-500/2 flex gap-4 items-start animate-fade-in">
-              <div className="h-10 w-10 bg-emerald-500/20 text-emerald-500 rounded-lg flex items-center justify-center shrink-0">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Certificado Ativo e Autorizado</p>
-                <div className="text-xs text-muted-foreground space-y-0.5 leading-relaxed">
-                  <p className="font-mono truncate"><strong className="text-foreground">Arquivo:</strong> {empresa.certificado_a1_nome}</p>
-                  <p><strong className="text-foreground">Validade:</strong> {new Date(empresa.certificado_a1_validade!).toLocaleDateString('pt-BR')} (Próximos 12 meses)</p>
-                  <p><strong className="text-foreground">Emissor:</strong> Autoridade Certificadora ICP-Brasil</p>
-                  <p><strong className="text-foreground">Algoritmo:</strong> SHA256withRSA (2048 bits)</p>
-                </div>
-                <div className="pt-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-red-500 hover:text-red-600 hover:bg-red-500/10 p-0 h-auto"
-                    onClick={handleRemoveCertificate}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Remover Certificado A1
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/2 flex gap-4 items-start">
-              <div className="h-10 w-10 bg-amber-500/20 text-amber-500 rounded-lg flex items-center justify-center shrink-0">
-                <AlertTriangle className="h-5 w-5 animate-pulse" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-amber-600 dark:text-amber-400">Nenhum Certificado Anexado</p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                  Sem um certificado digital modelo A1 configurado, as vendas não poderão emitir notas fiscais oficiais da SEFAZ, funcionando apenas como cupons de venda comerciais simples.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Área de Upload e Validação */}
-          {!empresa.certificado_a1_nome && (
-            <div className="space-y-4">
-              <div 
-                className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 ${
-                  dragActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                }`}
-                onDragEnter={handleDrag}
-                onDragOver={handleDrag}
-                onDragLeave={handleDrag}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById('cert-upload')?.click()}
-              >
-                <input 
-                  type="file" 
-                  id="cert-upload" 
-                  accept=".pfx,.p12"
-                  className="hidden" 
-                  onChange={handleFileChange}
+  return (
+    <div className="space-y-6">
+      
+      <div className="grid gap-6 md:grid-cols-2 animate-fade-in items-start">
+        
+        {/* Cadastro da Empresa */}
+        <Card className="border-border/60 shadow-lg">
+          <CardHeader className="pb-4 border-b border-border/80">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-indigo-500" />
+              Dados Cadastrais da Empresa
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Informações corporativas essenciais para emissão de documentos fiscais.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="Razão Social"
+                  placeholder="Razão Social da Empresa"
+                  required
+                  value={empresa.razao_social}
+                  onChange={(e) => setEmpresa({ ...empresa, razao_social: e.target.value })}
                 />
-                
-                {fileName ? (
-                  <>
-                    <FileText className="h-10 w-10 text-primary mb-2 animate-bounce" />
-                    <p className="text-sm font-bold text-primary truncate max-w-[250px]">{fileName}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Pronto para ativação segura.</p>
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud className="h-10 w-10 text-muted-foreground mb-2" />
-                    <p className="text-sm font-bold">Arraste e solte seu Certificado A1</p>
-                    <p className="text-xs text-muted-foreground mt-1">Formatos aceitos: .pfx ou .p12 (tamanho máx. 5MB)</p>
-                  </>
+                <Input
+                  label="Nome Fantasia"
+                  placeholder="Nome Fantasia da Loja"
+                  required
+                  value={empresa.nome_fantasia}
+                  onChange={(e) => setEmpresa({ ...empresa, nome_fantasia: e.target.value })}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="CNPJ"
+                  placeholder="00.000.000/0000-00"
+                  required
+                  value={empresa.cnpj}
+                  onChange={(e) => setEmpresa({ ...empresa, cnpj: e.target.value })}
+                />
+                <Input
+                  label="Inscrição Estadual"
+                  placeholder="Isento ou IE do Estado"
+                  required
+                  value={empresa.inscricao_estadual}
+                  onChange={(e) => setEmpresa({ ...empresa, inscricao_estadual: e.target.value })}
+                />
+              </div>
+
+              <div className="w-full space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Regime Tributário
+                </label>
+                <select
+                  className="premium-input bg-background"
+                  value={empresa.regime_tributario}
+                  onChange={(e) => setEmpresa({ ...empresa, regime_tributario: e.target.value })}
+                >
+                  <option value="Simples Nacional">Simples Nacional</option>
+                  <option value="Simples Nacional - Excesso de Sublimite">Simples Nacional - Excesso de Sublimite</option>
+                  <option value="Lucro Presumido">Lucro Presumido</option>
+                  <option value="Lucro Real">Lucro Real</option>
+                </select>
+              </div>
+
+              <Input
+                label="Endereço Fiscal Completo"
+                placeholder="Rua, Número, Bairro, Cidade/UF e CEP"
+                required
+                value={empresa.endereco}
+                onChange={(e) => setEmpresa({ ...empresa, endereco: e.target.value })}
+              />
+
+              <Input
+                label="Telefone Comercial"
+                placeholder="Ex: (11) 3333-3333"
+                required
+                value={empresa.telefone}
+                onChange={(e) => setEmpresa({ ...empresa, telefone: e.target.value })}
+              />
+
+              <div className="flex justify-end pt-2 border-t border-border/40">
+                <Button type="submit" disabled={loading} className="w-full sm:w-auto shadow-glow-primary">
+                  {loading ? 'Salvando...' : 'Salvar Dados Fiscais'}
+                </Button>
+              </div>
+
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Certificado Digital A1 */}
+        <Card className="border-border/60 shadow-lg">
+          <CardHeader className="pb-4 border-b border-border/80">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-emerald-500" />
+              Certificado Digital A1 (.pfx / .p12)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Vincule seu certificado digital modelo A1 para assinatura eletrônica de notas fiscais.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-4">
+
+            {/* Status do Certificado Ativo */}
+            {empresa.certificado_a1_nome ? (
+              <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-500/2 flex gap-4 items-start animate-fade-in">
+                <div className="h-10 w-10 bg-emerald-500/20 text-emerald-500 rounded-lg flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Certificado Ativo e Autorizado</p>
+                  <div className="text-xs text-muted-foreground space-y-0.5 leading-relaxed">
+                    <p className="font-mono truncate"><strong className="text-foreground">Arquivo:</strong> {empresa.certificado_a1_nome}</p>
+                    <p><strong className="text-foreground">Validade:</strong> {new Date(empresa.certificado_a1_validade!).toLocaleDateString('pt-BR')} (Próximos 12 meses)</p>
+                    <p><strong className="text-foreground">Emissor:</strong> Autoridade Certificadora ICP-Brasil</p>
+                    <p><strong className="text-foreground">Algoritmo:</strong> SHA256withRSA (2048 bits)</p>
+                  </div>
+                  <div className="pt-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-red-500 hover:text-red-600 hover:bg-red-500/10 p-0 h-auto"
+                      onClick={handleRemoveCertificate}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" /> Remover Certificado A1
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/2 flex gap-4 items-start">
+                <div className="h-10 w-10 bg-amber-500/20 text-amber-500 rounded-lg flex items-center justify-center shrink-0">
+                  <AlertTriangle className="h-5 w-5 animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-amber-600 dark:text-amber-400">Nenhum Certificado Anexado</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    Sem um certificado digital modelo A1 configurado, as vendas não poderão emitir notas fiscais oficiais da SEFAZ, funcionando apenas como cupons de venda comerciais simples.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Área de Upload e Validação */}
+            {!empresa.certificado_a1_nome && (
+              <div className="space-y-4">
+                <div 
+                  className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 ${
+                    dragActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                  }`}
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('cert-upload')?.click()}
+                >
+                  <input 
+                    type="file" 
+                    id="cert-upload" 
+                    accept=".pfx,.p12"
+                    className="hidden" 
+                    onChange={handleFileChange}
+                  />
+                  
+                  {fileName ? (
+                    <>
+                      <FileText className="h-10 w-10 text-primary mb-2 animate-bounce" />
+                      <p className="text-sm font-bold text-primary truncate max-w-[250px]">{fileName}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Pronto para ativação segura.</p>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-10 w-10 text-muted-foreground mb-2" />
+                      <p className="text-sm font-bold">Arraste e solte seu Certificado A1</p>
+                      <p className="text-xs text-muted-foreground mt-1">Formatos aceitos: .pfx ou .p12 (tamanho máx. 5MB)</p>
+                    </>
+                  )}
+                </div>
+
+                {fileName && (
+                  <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-3 animate-slide-up">
+                    <div className="relative">
+                      <Input
+                        label="Digite a Senha do Certificado"
+                        type="password"
+                        placeholder="Senha do arquivo .pfx / .p12"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pr-10"
+                      />
+                      <KeyRound className="absolute right-3 top-[2.1rem] h-4 w-4 text-muted-foreground" />
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        className="flex-1"
+                        onClick={() => { setFileName(null); setPassword(''); }}
+                      >
+                        Limpar
+                      </Button>
+                      <Button 
+                        className="flex-1 shadow-glow-primary"
+                        onClick={handleLinkCertificate}
+                      >
+                        Validar & Ativar
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
+            )}
 
-              {fileName && (
-                <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-3 animate-slide-up">
-                  <div className="relative">
-                    <Input
-                      label="Digite a Senha do Certificado"
-                      type="password"
-                      placeholder="Senha do arquivo .pfx / .p12"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="pr-10"
-                    />
-                    <KeyRound className="absolute right-3 top-[2.1rem] h-4 w-4 text-muted-foreground" />
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      className="flex-1"
-                      onClick={() => { setFileName(null); setPassword(''); }}
-                    >
-                      Limpar
-                    </Button>
-                    <Button 
-                      className="flex-1 shadow-glow-primary"
-                      onClick={handleLinkCertificate}
-                    >
-                      Validar & Ativar
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          </CardContent>
+        </Card>
 
+      </div>
+
+      {/* Zona de Perigo / Redefinição */}
+      <Card className="border-red-500/20 bg-red-500/5 dark:bg-red-500/2 shadow-lg rounded-2xl animate-fade-in">
+        <CardHeader className="pb-4 border-b border-red-500/20">
+          <CardTitle className="text-base flex items-center gap-2 text-red-500 font-bold">
+            <Trash2 className="h-5 w-5 animate-pulse" />
+            Zona de Perigo: Redefinição Geral do Sistema
+          </CardTitle>
+          <CardDescription className="text-xs text-red-400/80">
+            Ações de limpeza profunda e exclusão permanente de todas as bases de dados.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-sm font-semibold text-foreground">Excluir Todos os Dados Cadastrados</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Esta ação apagará de forma permanente todos os seus produtos cadastrados, histórico de vendas, logs de estoque, clientes registrados e as configurações fiscais da sua empresa. Suas credenciais de login serão mantidas e a base iniciará totalmente zerada.
+            </p>
+          </div>
+          <Button 
+            onClick={handleResetAllData}
+            disabled={loading}
+            className="bg-red-500 hover:bg-red-600 text-white shadow-glow-destructive self-start sm:self-auto shrink-0 transition-transform active:scale-95"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            {loading ? 'Limpando...' : 'Excluir Todos os Dados'}
+          </Button>
         </CardContent>
       </Card>
 
