@@ -135,10 +135,15 @@ export const Dashboard: React.FC = () => {
       // -- MODO REAL DO SUPABASE --
       // Buscar dados da empresa
       try {
-        const { data: companyData, error: companyErr } = await supabase
+        let compQuery = supabase
           .from('empresa_fiscal')
-          .select('nome_fantasia')
-          .maybeSingle();
+          .select('nome_fantasia');
+
+        if (user?.id) {
+          compQuery = compQuery.eq('usuario_id', user.id);
+        }
+
+        const { data: companyData, error: companyErr } = await compQuery.maybeSingle();
 
         if (companyErr) throw companyErr;
 

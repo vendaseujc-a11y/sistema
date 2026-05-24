@@ -679,11 +679,16 @@ export const Estoque: React.FC = () => {
       // -- MODO REAL DO SUPABASE --
       for (const xmlItem of xmlItems) {
         // Verificar se existe
-        const { data: existing } = await supabase
+        let xmlQuery = supabase
           .from('produtos')
           .select('*')
-          .eq('sku', xmlItem.sku)
-          .maybeSingle();
+          .eq('sku', xmlItem.sku);
+
+        if (user?.id) {
+          xmlQuery = xmlQuery.eq('usuario_id', user.id);
+        }
+
+        const { data: existing } = await xmlQuery.maybeSingle();
           
         if (existing) {
           // Atualizar

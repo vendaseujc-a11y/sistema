@@ -13,7 +13,7 @@ import { Empresa } from '../types/index.ts';
 import { supabase } from '../lib/supabase.js';
 
 export const EmpresaConfig: React.FC = () => {
-  const { isMockMode } = useAuth();
+  const { isMockMode, user } = useAuth();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(false);
@@ -48,10 +48,15 @@ export const EmpresaConfig: React.FC = () => {
       }
 
       // -- MODO REAL DO SUPABASE --
-      const { data, error } = await supabase
+      let query = supabase
         .from('empresa_fiscal')
-        .select('*')
-        .maybeSingle();
+        .select('*');
+
+      if (user?.id) {
+        query = query.eq('usuario_id', user.id);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (error) throw error;
 
@@ -99,10 +104,15 @@ export const EmpresaConfig: React.FC = () => {
       // Verifica se já existe um registro para atualizar, senão insere
       let existing = null;
       try {
-        const { data, error: selectErr } = await supabase
+        let selectQuery = supabase
           .from('empresa_fiscal')
-          .select('id')
-          .maybeSingle();
+          .select('id');
+
+        if (user?.id) {
+          selectQuery = selectQuery.eq('usuario_id', user.id);
+        }
+
+        const { data, error: selectErr } = await selectQuery.maybeSingle();
         
         if (selectErr) throw selectErr;
         existing = data;
