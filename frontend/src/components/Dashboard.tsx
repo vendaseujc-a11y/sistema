@@ -13,7 +13,8 @@ import { supabase } from '../lib/supabase.js';
 import { 
   getMockProducts, saveMockProducts, 
   getMockSales, saveMockSales, 
-  getMockLogs, saveMockLogs 
+  getMockLogs, saveMockLogs,
+  getMockEmpresa
 } from '../lib/mockData.ts';
 import { Produto, Venda, EstoqueLog } from '../types/index.ts';
 
@@ -38,6 +39,7 @@ export const Dashboard: React.FC = () => {
     faturamento30d: 0, prevFaturamento30d: 0, change30d: 0,
   });
   const [top10Produtos, setTop10Produtos] = useState<any[]>([]);
+  const [empresaName, setEmpresaName] = useState('Operador');
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -46,6 +48,13 @@ export const Dashboard: React.FC = () => {
         // Obter dados simulados do localStorage
         const products = getMockProducts();
         const sales = getMockSales();
+        const company = getMockEmpresa();
+        
+        if (company?.nome_fantasia) {
+          setEmpresaName(company.nome_fantasia);
+        } else {
+          setEmpresaName('Operador');
+        }
 
         // 1. Filtrar vendas feitas hoje
         const hojeStr = new Date().toDateString();
@@ -124,6 +133,30 @@ export const Dashboard: React.FC = () => {
       }
 
       // -- MODO REAL DO SUPABASE --
+      // Buscar dados da empresa
+      try {
+        const { data: companyData, error: companyErr } = await supabase
+          .from('empresa_fiscal')
+          .select('nome_fantasia')
+          .maybeSingle();
+
+        if (companyErr) throw companyErr;
+
+        if (companyData?.nome_fantasia) {
+          setEmpresaName(companyData.nome_fantasia);
+        } else {
+          setEmpresaName('Operador');
+        }
+      } catch (companyErr) {
+        console.warn('Erro ao buscar dados da empresa no Dashboard:', companyErr);
+        const company = getMockEmpresa();
+        if (company?.nome_fantasia) {
+          setEmpresaName(company.nome_fantasia);
+        } else {
+          setEmpresaName('Operador');
+        }
+      }
+
       const hoje = new Date();
       hoje.setHours(0,0,0,0);
       const hojeIso = hoje.toISOString();
@@ -381,7 +414,7 @@ export const Dashboard: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-indigo-900/40 to-violet-950/20 dark:from-indigo-950/50 dark:to-background p-6 rounded-2xl border border-indigo-500/20 backdrop-blur-md shadow-premium">
         <div>
           <h3 className="text-xl font-bold flex items-center gap-2">
-            Olá, Operador <Sparkles className="h-5 w-5 text-indigo-400 animate-pulse" />
+            Olá, {empresaName} <Sparkles className="h-5 w-5 text-indigo-400 animate-pulse" />
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
             Aqui está a visão geral das operações do seu PDV e Estoque hoje.
