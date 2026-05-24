@@ -6,7 +6,7 @@ import { Button } from './ui/button.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, Check, 
-  Sparkles, Mail, Barcode 
+  Mail, Barcode 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 
@@ -63,10 +63,9 @@ export const PDV: React.FC = () => {
         query = query.or(`sku.ilike.%${term}%,nome.ilike.%${term}%`);
       }
 
-      // Limitamos a pesquisa a 10 itens para economizar egress
       const { data, error } = await query
         .order('nome')
-        .range(0, 9);
+        .range(0, 199);
 
       if (error) throw error;
       setProdutos(data || []);
@@ -357,19 +356,19 @@ export const PDV: React.FC = () => {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3 animate-fade-in items-start">
+    <div className="grid gap-4 lg:grid-cols-3 animate-fade-in items-start">
       
       {/* Catálogo de Produtos (Esquerda - 2 colunas) */}
-      <div className="lg:col-span-2 space-y-4">
+      <div className="lg:col-span-2 space-y-2">
         
         {/* Barra de Pesquisa e Scanner Banner */}
-        <div className="flex flex-col sm:flex-row gap-4 items-stretch">
+        <div className="flex flex-col sm:flex-row gap-2 items-stretch">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
               placeholder="Pesquise produtos por nome ou SKU..."
-              className="pl-10 h-12 text-base rounded-xl"
+              className="pl-9 h-10 text-sm rounded-xl"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={(e) => {
@@ -386,99 +385,115 @@ export const PDV: React.FC = () => {
               }}
             />
           </div>
-          <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-500/2 shrink-0 shadow-premium">
-            <Barcode className="h-6 w-6 text-indigo-500 animate-pulse shrink-0" />
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-500/2 shrink-0 shadow-premium">
+            <Barcode className="h-5 w-5 text-indigo-500 animate-pulse shrink-0" />
             <div className="text-left">
-              <p className="text-[9px] text-muted-foreground font-extrabold uppercase leading-none">Scanner Global</p>
-              <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-1">Apenas aponte e scaneie!</p>
+              <p className="text-[8px] text-muted-foreground font-extrabold uppercase leading-none">Scanner Global</p>
+              <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">Aponte e scaneie!</p>
             </div>
           </div>
         </div>
 
         {/* Listagem do Catálogo */}
         {searchLoading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-            <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm">Buscando no banco de dados...</p>
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+            <div className="h-6 w-6 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs">Buscando no banco de dados...</p>
           </div>
         ) : produtos.length === 0 ? (
-          <div className="text-center py-16 border border-dashed border-border rounded-xl bg-card/20 text-muted-foreground">
-            <p className="text-sm font-semibold">Nenhum produto cadastrado ou encontrado.</p>
-            <p className="text-xs mt-1">Experimente buscar por outros termos ou gerencie o estoque na aba correspondente.</p>
+          <div className="text-center py-10 border border-dashed border-border rounded-xl bg-card/20 text-muted-foreground">
+            <p className="text-xs font-semibold">Nenhum produto cadastrado ou encontrado.</p>
+            <p className="text-[10px] mt-1">Experimente buscar por outros termos ou gerencie o estoque na aba correspondente.</p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {produtos.map((prod) => {
-              const inStock = prod.estoque > 0;
-              const isLowStock = prod.estoque <= prod.estoque_minimo;
-              const isAnimating = addedItemAnimationId === prod.id;
-              
-              return (
-                <div 
-                  key={prod.id}
-                  onClick={() => inStock && addToCart(prod)}
-                  className={`flex gap-4 p-4 rounded-xl border bg-card text-card-foreground shadow-premium transition-all duration-300 ${
-                    inStock 
-                      ? 'cursor-pointer hover:shadow-premium-hover hover:border-primary/40 active:scale-98' 
-                      : 'opacity-60 cursor-not-allowed'
-                  } ${isAnimating ? 'ring-2 ring-primary ring-offset-2' : ''}`}
-                >
-                  {/* Mock Image Box */}
-                  <div className="w-20 h-20 bg-muted/60 dark:bg-muted/10 rounded-lg flex items-center justify-center shrink-0 overflow-hidden relative border border-border">
-                    {prod.imagem_url ? (
-                      <img src={prod.imagem_url} alt={prod.nome} className="w-full h-full object-cover" />
-                    ) : (
-                      <Sparkles className="h-6 w-6 text-muted-foreground/45" />
-                    )}
-                    
-                    {/* Alerta de Estoque Baixo / Esgotado */}
-                    {!inStock ? (
-                      <div className="absolute inset-0 bg-red-600/80 backdrop-blur-[1px] flex items-center justify-center text-[10px] font-bold text-white uppercase tracking-wider">
-                        Esgotado
-                      </div>
-                    ) : isLowStock ? (
-                      <div className="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Estoque baixo" />
-                    ) : null}
-                  </div>
+          <div className="rounded-xl border border-border overflow-hidden bg-card shadow-md">
+            {/* Cabeçalho da lista */}
+            <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-3 py-1.5 bg-muted/40 border-b border-border text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              <span>Produto / SKU</span>
+              <span className="text-right w-20">Preço</span>
+              <span className="text-center w-16">Estoque</span>
+              <span className="text-right w-20">Ação</span>
+            </div>
 
-                  {/* Informações */}
-                  <div className="flex-1 flex flex-col justify-between min-w-0">
+            {/* Linhas dos produtos */}
+            <div className="divide-y divide-border/60">
+              {produtos.map((prod) => {
+                const inStock = prod.estoque > 0;
+                const isLowStock = prod.estoque <= prod.estoque_minimo && inStock;
+                const isAnimating = addedItemAnimationId === prod.id;
+
+                return (
+                  <div
+                    key={prod.id}
+                    className={`grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-3 py-1.5 transition-colors duration-150 ${
+                      inStock
+                        ? 'hover:bg-primary/5 cursor-pointer'
+                        : 'opacity-50 cursor-not-allowed'
+                    } ${isAnimating ? 'bg-primary/10' : ''}`}
+                    onClick={() => inStock && addToCart(prod)}
+                  >
+                    {/* Nome + SKU */}
                     <div className="min-w-0">
-                      <h4 className="font-bold text-sm truncate leading-snug" title={prod.nome}>{prod.nome}</h4>
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-0.5">SKU: {prod.sku}</p>
+                      <p className="text-xs font-semibold truncate leading-snug" title={prod.nome}>
+                        {prod.nome}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground font-mono uppercase tracking-wider mt-0.5">
+                        {prod.sku}
+                      </p>
                     </div>
 
-                    <div className="flex items-end justify-between mt-2">
-                      <span className="text-base font-extrabold text-indigo-500">
-                        R$ {prod.preco.toFixed(2)}
-                      </span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        isLowStock ? 'bg-amber-500/10 text-amber-500' : 'bg-secondary text-secondary-foreground'
-                      }`}>
-                        Estoque: {prod.estoque} un
-                      </span>
+                    {/* Preço */}
+                    <span className="w-20 text-right font-extrabold text-xs text-indigo-500 tabular-nums">
+                      R$ {prod.preco.toFixed(2)}
+                    </span>
+
+                    {/* Estoque */}
+                    <span className={`w-14 text-center text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      !inStock
+                        ? 'bg-red-500/10 text-red-500'
+                        : isLowStock
+                        ? 'bg-amber-500/10 text-amber-500'
+                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    }`}>
+                      {prod.estoque}
+                    </span>
+
+                    {/* Botão Adicionar */}
+                    <div className="w-20 flex justify-end">
+                      <button
+                        disabled={!inStock}
+                        onClick={(e) => { e.stopPropagation(); inStock && addToCart(prod); }}
+                        className={`flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[10px] font-bold transition-all duration-150 ${
+                          inStock
+                            ? 'bg-primary text-primary-foreground hover:opacity-90 active:scale-95'
+                            : 'bg-muted text-muted-foreground cursor-not-allowed'
+                        }`}
+                      >
+                        <Plus className="h-2.5 w-2.5" />
+                        {inStock ? '+' : '—'}
+                      </button>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
 
       {/* Carrinho Lateral (Direita - 1 coluna) */}
-      <Card className="border-border/60 shadow-xl flex flex-col max-h-[calc(100vh-10rem)] lg:sticky lg:top-24">
-        <CardHeader className="pb-3 border-b border-border">
-          <CardTitle className="text-base flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5 text-primary" /> Carrinho de Compras
+      <Card className="border-border/60 shadow-xl flex flex-col max-h-[calc(100vh-8rem)] lg:sticky lg:top-24">
+        <CardHeader className="pb-2 border-b border-border">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ShoppingCart className="h-4 w-4 text-primary" /> Carrinho
           </CardTitle>
-          <CardDescription>
-            Itens selecionados para processar a transação.
+          <CardDescription className="text-[10px]">
+            Itens para processar a venda.
           </CardDescription>
         </CardHeader>
 
         {/* Conteúdo do Carrinho */}
-        <CardContent className="flex-1 overflow-y-auto py-4 space-y-4 min-h-[200px]">
+        <CardContent className="flex-1 overflow-y-auto py-2 space-y-2 min-h-[150px]">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-10 gap-2">
               <ShoppingCart className="h-10 w-10 text-muted-foreground/30" />
@@ -488,38 +503,38 @@ export const PDV: React.FC = () => {
           ) : (
             <div className="divide-y divide-border">
               {cart.map((item) => (
-                <div key={item.produto.id} className="flex gap-3 py-3 items-center justify-between first:pt-0 last:pb-0">
+                <div key={item.produto.id} className="flex gap-2 py-2 items-center justify-between first:pt-0 last:pb-0">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold truncate leading-none mb-1">{item.produto.nome}</p>
-                    <p className="text-xs text-muted-foreground font-semibold">
+                    <p className="text-xs font-semibold truncate leading-none mb-0.5">{item.produto.nome}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold">
                       {item.quantidade} x R$ {item.produto.preco.toFixed(2)}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex items-center border border-input bg-background rounded-md h-8 overflow-hidden">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center border border-input bg-background rounded-md h-7 overflow-hidden">
                       <button 
                         onClick={() => updateQuantity(item.produto.id, -1)}
-                        className="px-2 hover:bg-muted text-muted-foreground text-sm flex items-center"
+                        className="px-1.5 hover:bg-muted text-muted-foreground flex items-center"
                       >
-                        <Minus className="h-3 w-3" />
+                        <Minus className="h-2.5 w-2.5" />
                       </button>
-                      <span className="w-8 text-center text-xs font-bold">{item.quantidade}</span>
+                      <span className="w-6 text-center text-[10px] font-bold">{item.quantidade}</span>
                       <button 
                         onClick={() => updateQuantity(item.produto.id, 1)}
-                        className="px-2 hover:bg-muted text-muted-foreground text-sm flex items-center"
+                        className="px-1.5 hover:bg-muted text-muted-foreground flex items-center"
                       >
-                        <Plus className="h-3 w-3" />
+                        <Plus className="h-2.5 w-2.5" />
                       </button>
                     </div>
 
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       onClick={() => removeFromCart(item.produto.id)}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -529,30 +544,30 @@ export const PDV: React.FC = () => {
         </CardContent>
 
         {/* Rodapé e Fechamento */}
-        <CardFooter className="flex flex-col border-t border-border pt-4 bg-muted/10 p-6 space-y-4">
+        <CardFooter className="flex flex-col border-t border-border pt-3 bg-muted/10 p-4 space-y-3">
           
           {/* Subtotal */}
           <div className="flex items-center justify-between w-full">
-            <span className="text-sm font-semibold text-muted-foreground">Valor Total:</span>
-            <span className="text-2xl font-extrabold text-primary">R$ {cartTotal.toFixed(2)}</span>
+            <span className="text-xs font-semibold text-muted-foreground">Valor Total:</span>
+            <span className="text-xl font-extrabold text-primary">R$ {cartTotal.toFixed(2)}</span>
           </div>
 
           {/* E-mail de Comprovante */}
           {cart.length > 0 && (
-            <div className="w-full space-y-2 border-t border-border pt-3">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1.5">
-                <Mail className="h-3 w-3" /> Enviar comprovante por E-mail (Resend)
+            <div className="w-full space-y-1.5 border-t border-border pt-2">
+              <span className="text-[9px] font-bold text-muted-foreground uppercase flex items-center gap-1">
+                <Mail className="h-3 w-3" /> Comprovante por E-mail
               </span>
               <div className="relative">
                 <Input
                   type="email"
                   placeholder="cliente@email.com (opcional)"
-                  className="pr-10 h-9 text-xs"
+                  className="pr-8 h-8 text-[11px]"
                   value={clienteEmail}
                   onChange={(e) => setClienteEmail(e.target.value)}
                 />
                 {clienteEmail && (
-                  <Check className="absolute right-3 top-2.5 h-4 w-4 text-emerald-500" />
+                  <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-emerald-500" />
                 )}
               </div>
             </div>
@@ -560,19 +575,19 @@ export const PDV: React.FC = () => {
 
           {/* Botão de Finalizar */}
           <Button 
-            className="w-full h-11" 
+            className="w-full h-10 text-sm" 
             disabled={cart.length === 0 || checkoutLoading}
             onClick={handleCheckout}
           >
             {checkoutLoading ? (
               <span className="flex items-center gap-2">
-                <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 Processando transação...
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <Check className="h-5 w-5" />
-                Finalizar Venda (Checkout)
+                <Check className="h-4 w-4" />
+                Finalizar Venda
               </span>
             )}
           </Button>
