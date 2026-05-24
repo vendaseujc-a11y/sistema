@@ -4,17 +4,20 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter }
 import { Input } from './ui/input.tsx';
 import { Button } from './ui/button.tsx';
 import { useToast } from './ui/toast.tsx';
+import { Dialog } from './ui/dialog.tsx';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, Check, 
-  Mail, Barcode 
+  Mail, Barcode, Printer, Users, CreditCard, Coins
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 
   getMockProducts, saveMockProducts, 
   getMockSales, saveMockSales, 
-  getMockLogs, saveMockLogs 
+  getMockLogs, saveMockLogs,
+  getMockClientes, saveMockClientes,
+  getMockEmpresa
 } from '../lib/mockData.ts';
-import { Produto, Venda, EstoqueLog } from '../types/index.ts';
+import { Produto, Venda, EstoqueLog, Cliente, Empresa } from '../types/index.ts';
 
 interface CartItem {
   produto: Produto;
@@ -31,6 +34,100 @@ export const PDV: React.FC = () => {
   const [clienteEmail, setClienteEmail] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+
+  // Clientes e Cadastro Rápido
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [selectedClienteId, setSelectedClienteId] = useState('');
+  const [isNovoClienteOpen, setIsNovoClienteOpen] = useState(false);
+  const [novoCliNome, setNovoCliNome] = useState('');
+  const [novoCliEmail, setNovoCliEmail] = useState('');
+  const [novoCliDoc, setNovoCliDoc] = useState('');
+  const [novoCliTel, setNovoCliTel] = useState('');
+
+  // Formas de Pagamento
+  const [tipoPagamento, setTipoPagamento] = useState<'a_vista' | 'debito' | 'credito'>('a_vista');
+
+  // Modal de Cupom / Impressão
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [latestSale, setLatestSale] = useState<Venda | null>(null);
+  const [empresa, setEmpresa] = useState<Empresa | null>(null);
+
+  const fetchClientesAndEmpresa = async () => {
+    try {
+      if (isMockMode) {
+        setClientes(getMockClientes());
+        setEmpresa(getMockEmpresa());
+        return;
+      }
+      
+      const { data: clientsData } = await supabase.from('clientes').select('*').order('nome');
+      if (clientsData) setClientes(clientsData);
+      
+      const { data: companyData } = await supabase.from('empresa_fiscal').select('*').maybeSingle();
+      if (companyData) setEmpresa(companyData);
+    } catch (err) {
+      console.error('Erro ao buscar dados cadastrais no PDV:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchClientesAndEmpresa();
+  }, [isMockMode]);
+
+  const handleNovoClienteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novoCliNome || !novoCliEmail) {
+      toast('Campos obrigatórios', 'Nome e E-mail são requeridos.', 'warning');
+      return;
+    }
+
+    try {
+      const newClient: Cliente = {
+        id: 'cli-' + Math.random().toString(36).substring(2, 9),
+        nome: novoCliNome,
+        email: novoCliEmail,
+        documento: novoCliDoc || undefined,
+        telefone: novoCliTel || undefined,
+        created_at: new Date().toISOString()
+      };
+
+      if (isMockMode) {
+        const list = getMockClientes();
+        const updatedList = [newClient, ...list];
+        saveMockClientes(updatedList);
+        setClientes(updatedList);
+        setSelectedClienteId(newClient.id);
+        setClienteEmail(newClient.email);
+        toast('Cliente Cadastrado!', `"${newClient.nome}" cadastrado com sucesso localmente.`, 'success');
+      } else {
+        const { data, error } = await supabase
+          .from('clientes')
+          .insert({
+            nome: newClient.nome,
+            email: newClient.email,
+            documento: newClient.documento,
+            telefone: newClient.telefone
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        
+        setClientes(prev => [data, ...prev]);
+        setSelectedClienteId(data.id);
+        setClienteEmail(data.email);
+        toast('Cliente Cadastrado!', `"${data.nome}" cadastrado no Supabase.`, 'success');
+      }
+
+      setIsNovoClienteOpen(false);
+      setNovoCliNome('');
+      setNovoCliEmail('');
+      setNovoCliDoc('');
+      setNovoCliTel('');
+    } catch (err: any) {
+      toast('Erro de Cadastro', err.message || 'Incapaz de registrar cliente.', 'error');
+    }
+  };
 
   // Animação temporária de feedback ao adicionar item
   const [addedItemAnimationId, setAddedItemAnimationId] = useState<string | null>(null);
@@ -229,6 +326,8 @@ export const PDV: React.FC = () => {
     setCheckoutLoading(true);
 
     try {
+      const selectedCli = clientes.find(c => c.id === selectedClienteId);
+
       if (isMockMode) {
         // --- CHECKOUT SIMULADO NO LOCAL STORAGE ---
         const mockProducts = getMockProducts();
@@ -251,12 +350,16 @@ export const PDV: React.FC = () => {
           return p;
         });
 
-        // 2. Criar a venda mock
+        // 2. Criar a venda mock com dados fiscais/comerciais
         const newSaleId = 'venda-' + Math.random().toString(36).substring(2, 9);
         const newSale: Venda = {
           id: newSaleId,
           total: cartTotal,
           cliente_email: clienteEmail || null,
+          cliente_id: selectedClienteId || null,
+          cliente_nome: selectedCli?.nome || null,
+          cliente_documento: selectedCli?.documento || null,
+          tipo_pagamento: tipoPagamento,
           usuario_id: 'd9b736b4-24ff-4fc9-b684-2a62886f3458',
           created_at: new Date().toISOString(),
           itens: cart.map(ci => ({
@@ -288,7 +391,6 @@ export const PDV: React.FC = () => {
 
         // Simular envio de e-mail pela API do backend se fornecido
         if (clienteEmail) {
-          toast('E-mail Agendado', `Enviando comprovante para ${clienteEmail} via backend...`, 'info');
           try {
             await fetch('http://localhost:3001/api/send-receipt', {
               method: 'POST',
@@ -303,48 +405,144 @@ export const PDV: React.FC = () => {
           }
         }
 
-        toast('Venda Finalizada!', 'Venda processada e estoque reduzido localmente.', 'success');
+        setLatestSale(newSale);
+        setIsReceiptOpen(true);
+        toast('Venda Finalizada!', 'Venda processada e cupom gerado localmente.', 'success');
         setCart([]);
         setClienteEmail('');
+        setSelectedClienteId('');
         setSearchTerm('');
         fetchProducts(''); // Recarregar produtos locais atualizados
         setCheckoutLoading(false);
         return;
       }
 
-      // --- CHECKOUT REAL NO SUPABASE (CHAMADA ATÔMICA RPC) ---
-      const payloadItens = cart.map(ci => ({
+      // --- CHECKOUT REAL NO SUPABASE (CHAMADA DIRETA E SEGURA) ---
+      const { data: saleData, error: saleErr } = await supabase
+        .from('vendas')
+        .insert({
+          total: cartTotal,
+          cliente_email: clienteEmail || null,
+          cliente_id: selectedClienteId || null,
+          cliente_nome: selectedCli?.nome || null,
+          cliente_documento: selectedCli?.documento || null,
+          tipo_pagamento: tipoPagamento,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (saleErr) {
+        // Fallback robusto se a tabela não tiver colunas fiscais
+        console.warn('Erro ao inserir com colunas novas, tentando fallback de RPC.');
+        const payloadItens = cart.map(ci => ({
+          produto_id: ci.produto.id,
+          quantidade: ci.quantidade,
+          preco_unitario: ci.produto.preco
+        }));
+
+        const { data: fallbackVendaId, error: rpcError } = await supabase.rpc('processar_venda', {
+          p_cliente_email: clienteEmail || null,
+          p_total: cartTotal,
+          p_itens: payloadItens
+        });
+
+        if (rpcError) throw rpcError;
+
+        const fallbackSale: Venda = {
+          id: fallbackVendaId || 'venda-real',
+          total: cartTotal,
+          cliente_email: clienteEmail || null,
+          tipo_pagamento: tipoPagamento,
+          usuario_id: '',
+          created_at: new Date().toISOString(),
+          itens: cart.map(ci => ({
+            id: '',
+            venda_id: fallbackVendaId || '',
+            produto_id: ci.produto.id,
+            quantidade: ci.quantidade,
+            preco_unitario: ci.produto.preco,
+            produto: { nome: ci.produto.nome, sku: ci.produto.sku }
+          }))
+        };
+        
+        setLatestSale(fallbackSale);
+        setIsReceiptOpen(true);
+        toast('Sucesso!', 'Venda concluída com transação atômica (RPC)!', 'success');
+        setCart([]);
+        setClienteEmail('');
+        setSelectedClienteId('');
+        setSearchTerm('');
+        fetchProducts('');
+        setCheckoutLoading(false);
+        return;
+      }
+
+      // 2. Inserir itens de venda
+      const itemsToInsert = cart.map(ci => ({
+        venda_id: saleData.id,
         produto_id: ci.produto.id,
         quantidade: ci.quantidade,
         preco_unitario: ci.produto.preco
       }));
 
-      // Chamar RPC processar_venda configurada em SQL
-      const { data: vendaId, error: rpcError } = await supabase.rpc('processar_venda', {
-        p_cliente_email: clienteEmail || null,
-        p_total: cartTotal,
-        p_itens: payloadItens
-      });
+      const { error: itemsErr } = await supabase
+        .from('itens_venda')
+        .insert(itemsToInsert);
 
-      if (rpcError) throw rpcError;
+      if (itemsErr) throw itemsErr;
 
-      // Disparar e-mail de comprovante se o e-mail estiver configurado
-      if (clienteEmail && vendaId) {
-        toast('Enviando e-mail', 'Disparando comprovante...', 'info');
+      // 3. Atualizar estoque e Logs no Supabase
+      for (const item of cart) {
+        await supabase
+          .from('produtos')
+          .update({
+            estoque: item.produto.estoque - item.quantidade,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', item.produto.id);
+
+        await supabase
+          .from('estoque_logs')
+          .insert({
+            produto_id: item.produto.id,
+            quantidade: -item.quantidade,
+            tipo: 'venda',
+            descricao: `Saída por Venda ID: ${saleData.id}`
+          });
+      }
+
+      // Disparar comprovante por e-mail no backend Express se houver
+      if (clienteEmail && saleData.id) {
         try {
           await fetch('http://localhost:3001/api/send-receipt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vendaId, clienteEmail })
+            body: JSON.stringify({ vendaId: saleData.id, clienteEmail })
           });
         } catch (e) {
-          console.warn('Erro ao disparar chamada de e-mail na API do Express backend.');
+          console.warn('Backend Express offline. Incapaz de despachar e-mail.');
         }
       }
 
-      toast('Sucesso!', 'Venda registrada e integrada ao estoque com transação atômica!', 'success');
+      const createdSale: Venda = {
+        ...saleData,
+        itens: cart.map(ci => ({
+          id: '',
+          venda_id: saleData.id,
+          produto_id: ci.produto.id,
+          quantidade: ci.quantidade,
+          preco_unitario: ci.produto.preco,
+          produto: { nome: ci.produto.nome, sku: ci.produto.sku }
+        }))
+      };
+
+      setLatestSale(createdSale);
+      setIsReceiptOpen(true);
+      toast('Sucesso!', 'Venda cadastrada e integrada ao banco Supabase!', 'success');
       setCart([]);
       setClienteEmail('');
+      setSelectedClienteId('');
       setSearchTerm('');
       fetchProducts('');
     } catch (err: any) {
@@ -546,6 +744,73 @@ export const PDV: React.FC = () => {
         {/* Rodapé e Fechamento */}
         <CardFooter className="flex flex-col border-t border-border pt-3 bg-muted/10 p-4 space-y-3">
           
+          {/* Seletor de Cliente */}
+          {cart.length > 0 && (
+            <div className="w-full space-y-1.5 border-b border-border/40 pb-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-bold text-muted-foreground uppercase flex items-center gap-1">
+                  <Users className="h-3 w-3 text-indigo-500" /> Identificar Cliente
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsNovoClienteOpen(true)}
+                  className="text-[9px] font-extrabold text-indigo-500 hover:underline"
+                >
+                  + Cadastrar
+                </button>
+              </div>
+              <select
+                className="premium-input h-8 text-[11px] bg-background"
+                value={selectedClienteId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedClienteId(val);
+                  const cli = clientes.find(c => c.id === val);
+                  if (cli) {
+                    setClienteEmail(cli.email);
+                  } else {
+                    setClienteEmail('');
+                  }
+                }}
+              >
+                <option value="">Consumidor Geral (Não Identificado)</option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.nome} ({c.documento || 'Sem CPF'})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Seletor de Forma de Pagamento */}
+          {cart.length > 0 && (
+            <div className="w-full space-y-1.5 border-b border-border/40 pb-2.5">
+              <span className="text-[9px] font-bold text-muted-foreground uppercase flex items-center gap-1">
+                <CreditCard className="h-3 w-3 text-indigo-500" /> Forma de Pagamento
+              </span>
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { id: 'a_vista', label: 'À Vista', icon: <Coins className="h-3 w-3 mr-0.5" /> },
+                  { id: 'debito', label: 'Débito', icon: <CreditCard className="h-3 w-3 mr-0.5" /> },
+                  { id: 'credito', label: 'Crédito', icon: <CreditCard className="h-3 w-3 mr-0.5" /> }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setTipoPagamento(opt.id as any)}
+                    className={`h-7 px-1 rounded-md text-[10px] font-extrabold flex items-center justify-center border transition-all ${
+                      tipoPagamento === opt.id
+                        ? 'bg-primary text-primary-foreground border-primary shadow-sm shadow-indigo-500/20'
+                        : 'bg-background hover:bg-muted border-input text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {opt.icon}
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Subtotal */}
           <div className="flex items-center justify-between w-full">
             <span className="text-xs font-semibold text-muted-foreground">Valor Total:</span>
@@ -554,7 +819,7 @@ export const PDV: React.FC = () => {
 
           {/* E-mail de Comprovante */}
           {cart.length > 0 && (
-            <div className="w-full space-y-1.5 border-t border-border pt-2">
+            <div className="w-full space-y-1.5 border-t border-border/40 pt-2">
               <span className="text-[9px] font-bold text-muted-foreground uppercase flex items-center gap-1">
                 <Mail className="h-3 w-3" /> Comprovante por E-mail
               </span>
@@ -593,6 +858,266 @@ export const PDV: React.FC = () => {
           </Button>
         </CardFooter>
       </Card>
+
+      {/* Modal 1: Cadastro Rápido de Cliente */}
+      <Dialog
+        isOpen={isNovoClienteOpen}
+        onClose={() => setIsNovoClienteOpen(false)}
+        title="Cadastrar Novo Cliente"
+        description="Associe esta venda a um novo cliente cadastrando as informações rápidas abaixo."
+      >
+        <form onSubmit={handleNovoClienteSubmit} className="space-y-4">
+          <Input
+            label="Nome Completo do Cliente"
+            placeholder="Ex: João da Silva"
+            required
+            value={novoCliNome}
+            onChange={(e) => setNovoCliNome(e.target.value)}
+          />
+          <Input
+            label="E-mail"
+            type="email"
+            placeholder="Ex: joao.silva@email.com"
+            required
+            value={novoCliEmail}
+            onChange={(e) => setNovoCliEmail(e.target.value)}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="CPF ou CNPJ"
+              placeholder="Ex: 123.456.789-00"
+              value={novoCliDoc}
+              onChange={(e) => setNovoCliDoc(e.target.value)}
+            />
+            <Input
+              label="Telefone / WhatsApp"
+              placeholder="Ex: (11) 98888-8888"
+              value={novoCliTel}
+              onChange={(e) => setNovoCliTel(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setIsNovoClienteOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit">
+              Cadastrar e Selecionar
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Modal 2: Emissão e Impressão de Cupom */}
+      <Dialog
+        isOpen={isReceiptOpen}
+        onClose={() => { setIsReceiptOpen(false); setLatestSale(null); }}
+        title="Venda Processada com Sucesso!"
+        description="O cupom foi emitido no formato padrão para bobina térmica."
+      >
+        {latestSale && (
+          <div className="space-y-4">
+            
+            {/* Bobina Térmica visual */}
+            <div className="border border-border/80 p-4 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 font-mono text-[11px] leading-relaxed max-w-[340px] mx-auto shadow-inner space-y-2 border-t-4 border-t-primary select-none">
+              
+              <div className="text-center font-bold text-sm uppercase">
+                {empresa?.nome_fantasia || 'LOJA PDV'}
+              </div>
+              <div className="text-center leading-tight opacity-90">
+                {empresa?.razao_social || 'LOJA PDV E ESTOQUE LTDA'}
+              </div>
+              <div className="text-center leading-tight opacity-95 text-[10px]">
+                CNPJ: {empresa?.cnpj || '12.345.678/0001-90'}
+              </div>
+              <div className="text-center leading-tight opacity-95 text-[10px]">
+                IE: {empresa?.inscricao_estadual || '111.222.333.444'}
+              </div>
+              <div className="text-center leading-tight opacity-90 text-[10px] truncate">
+                {empresa?.endereco || 'Rua Principal, 100 - São Paulo/SP'}
+              </div>
+              
+              <div className="border-t border-dashed border-slate-400 dark:border-slate-600 my-2" />
+              
+              <div className="text-center font-bold text-[10px] tracking-widest uppercase">
+                CUPOM DE VENDA (NÃO FISCAL)
+              </div>
+              
+              <div className="border-t border-dashed border-slate-400 dark:border-slate-600 my-2" />
+              
+              <div><strong>Venda ID:</strong> #{latestSale.id.substring(0, 8)}</div>
+              <div><strong>Data:</strong> {new Date(latestSale.created_at).toLocaleString('pt-BR')}</div>
+              {latestSale.cliente_nome && (
+                <div className="pt-1">
+                  <div><strong>Cliente:</strong> {latestSale.cliente_nome}</div>
+                  <div><strong>CPF/CNPJ:</strong> {latestSale.cliente_documento || '—'}</div>
+                </div>
+              )}
+              
+              <div className="border-t border-dashed border-slate-400 dark:border-slate-600 my-2" />
+              
+              {/* Itens */}
+              <div className="space-y-1.5">
+                <div className="grid grid-cols-[1fr_auto] font-bold text-[10px] text-slate-500 uppercase">
+                  <span>Descrição / Qtd</span>
+                  <span className="text-right">Total</span>
+                </div>
+                {(latestSale.itens || []).map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_auto] gap-2 items-baseline">
+                    <span className="truncate max-w-[190px]">
+                      {item.quantidade}x {item.produto?.nome || 'Item Venda'}
+                    </span>
+                    <span className="text-right font-bold">
+                      R$ {(item.quantidade * item.preco_unitario).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="border-t border-dashed border-slate-400 dark:border-slate-600 my-2" />
+              
+              <div className="flex justify-between text-xs font-extrabold">
+                <span>VALOR TOTAL:</span>
+                <span>R$ {latestSale.total.toFixed(2)}</span>
+              </div>
+              
+              <div className="flex justify-between mt-1 text-[10px] opacity-90">
+                <span>PAGAMENTO:</span>
+                <span className="uppercase">
+                  {latestSale.tipo_pagamento === 'credito' 
+                    ? 'Cartão de Crédito' 
+                    : latestSale.tipo_pagamento === 'debito' 
+                    ? 'Cartão de Débito' 
+                    : 'À Vista (Dinheiro/Pix)'}
+                </span>
+              </div>
+              
+              <div className="border-t border-dashed border-slate-400 dark:border-slate-600 my-2" />
+              
+              <div className="text-center font-bold tracking-wider text-[10px] pt-1">
+                *** OBRIGADO PELA PREFERÊNCIA! ***
+              </div>
+              
+            </div>
+
+            {/* Ações de Impressão */}
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => { setIsReceiptOpen(false); setLatestSale(null); }}
+              >
+                Fechar Caixa
+              </Button>
+              <Button 
+                className="flex-1 shadow-glow-primary"
+                onClick={() => {
+                  const emp = empresa || {
+                    razao_social: 'SISTEMA DE VENDAS VNI LTDA',
+                    nome_fantasia: 'Sistema VNI',
+                    cnpj: '12.345.678/0001-90',
+                    inscricao_estadual: '111.222.333.444',
+                    regime_tributario: 'Simples Nacional',
+                    endereco: 'Rua Principal, 100 - São Paulo/SP',
+                    telefone: '(11) 3333-3333'
+                  };
+                  
+                  // Helper de Impressão Térmica Dedicada
+                  const printWindow = window.open('', '_blank', 'width=350,height=600');
+                  if (!printWindow) {
+                    toast('Bloqueador Ativo', 'Permita popups para abrir a impressão.', 'warning');
+                    return;
+                  }
+                  
+                  const itemsHtml = (latestSale.itens || []).map(item => `
+                    <tr>
+                      <td style="padding: 4px 0;">${item.quantidade}x ${item.produto?.nome || 'Produto'}</td>
+                      <td style="padding: 4px 0; text-align: right;">R$ ${(item.quantidade * item.preco_unitario).toFixed(2)}</td>
+                    </tr>
+                  `).join('');
+
+                  const pagamentoLabel = latestSale.tipo_pagamento === 'credito' 
+                    ? 'Cartão de Crédito' 
+                    : latestSale.tipo_pagamento === 'debito' 
+                    ? 'Cartão de Débito' 
+                    : 'À Vista (Dinheiro/Pix)';
+                  
+                  printWindow.document.write(`
+                    <html>
+                      <head>
+                        <title>Imprimir Cupom</title>
+                        <style>
+                          body {
+                            font-family: 'Courier New', Courier, monospace;
+                            font-size: 11px;
+                            width: 270px;
+                            margin: 0;
+                            padding: 10px;
+                            color: #000;
+                          }
+                          .center { text-align: center; }
+                          .bold { font-weight: bold; }
+                          .divider { border-top: 1px dashed #000; margin: 8px 0; }
+                          table { width: 100%; border-collapse: collapse; }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="center bold" style="font-size: 13px;">${emp.nome_fantasia || 'LOJA PDV'}</div>
+                        <div class="center">${emp.razao_social || 'LOJA LTDA'}</div>
+                        <div class="center">CNPJ: ${emp.cnpj || '00.000.000/0000-00'}</div>
+                        <div class="center">IE: ${emp.inscricao_estadual || 'ISENTO'}</div>
+                        <div class="center" style="font-size: 9px;">${emp.endereco || ''}</div>
+                        <div class="divider"></div>
+                        <div class="center bold" style="font-size: 10px; letter-spacing: 1px;">CUPOM DE VENDA (NÃO FISCAL)</div>
+                        <div class="divider"></div>
+                        <div><strong>Venda ID:</strong> #${latestSale.id.substring(0, 8)}</div>
+                        <div><strong>Data:</strong> ${new Date(latestSale.created_at).toLocaleString('pt-BR')}</div>
+                        ${latestSale.cliente_nome ? `
+                          <div class="divider"></div>
+                          <div><strong>Cliente:</strong> ${latestSale.cliente_nome}</div>
+                          <div><strong>CPF/CNPJ:</strong> ${latestSale.cliente_documento || '—'}</div>
+                        ` : ''}
+                        <div class="divider"></div>
+                        <table>
+                          <thead>
+                            <tr style="border-bottom: 1px dashed #000;">
+                              <th style="text-align: left; padding-bottom: 4px;">Descrição</th>
+                              <th style="text-align: right; padding-bottom: 4px;">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${itemsHtml}
+                          </tbody>
+                        </table>
+                        <div class="divider"></div>
+                        <div style="display: flex; justify-content: space-between;">
+                          <span class="bold">VALOR TOTAL:</span>
+                          <span class="bold">R$ ${latestSale.total.toFixed(2)}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px;">
+                          <span>PAGAMENTO:</span>
+                          <span>${pagamentoLabel}</span>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="center bold" style="margin-top: 10px;">OBRIGADO PELA PREFERÊNCIA!</div>
+                        <script>
+                          window.onload = function() {
+                            window.print();
+                            setTimeout(function() { window.close(); }, 500);
+                          }
+                        </script>
+                      </body>
+                    </html>
+                  `);
+                  printWindow.document.close();
+                }}
+              >
+                <Printer className="h-4 w-4 mr-1.5" /> Imprimir Cupom
+              </Button>
+            </div>
+
+          </div>
+        )}
+      </Dialog>
 
     </div>
   );

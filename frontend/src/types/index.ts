@@ -11,6 +11,12 @@ export interface Produto {
   imagem_url?: string | null;
   created_at: string;
   updated_at: string;
+  // Dados Fiscais
+  ncm?: string | null;
+  cfop?: string | null;
+  icms_aliquota?: number | null;
+  pis_aliquota?: number | null;
+  cofins_aliquota?: number | null;
 }
 
 export interface Venda {
@@ -20,6 +26,10 @@ export interface Venda {
   usuario_id: string; // UUID (auth.users)
   created_at: string;
   itens?: ItemVendaDetalhe[];
+  tipo_pagamento?: 'credito' | 'debito' | 'a_vista' | null;
+  cliente_id?: string | null;
+  cliente_nome?: string | null;
+  cliente_documento?: string | null;
 }
 
 export interface ItemVenda {
@@ -98,4 +108,26 @@ export interface VendaML {
       sku: string;
     } | null;
   }[];
+}
+
+// Interfaces Adicionadas de Clientes & Empresa
+export interface Cliente {
+  id: string;
+  nome: string;
+  email: string;
+  documento?: string;
+  telefone?: string;
+  created_at: string;
+}
+
+export interface Empresa {
+  razao_social: string;
+  nome_fantasia: string;
+  cnpj: string;
+  inscricao_estadual: string;
+  regime_tributario: string;
+  endereco: string;
+  telefone: string;
+  certificado_a1_nome?: string | null;
+  certificado_a1_validade?: string | null;
 }

@@ -7,7 +7,8 @@ import { Input } from './ui/input.tsx';
 import { Dialog } from './ui/dialog.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
-  Plus, PackageOpen, ChevronLeft, ChevronRight, History, Trash2, Barcode 
+  Plus, PackageOpen, ChevronLeft, ChevronRight, History, Trash2, Barcode,
+  FileUp, FileSpreadsheet, ChevronDown, ChevronUp, FileCode
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 
@@ -48,6 +49,21 @@ export const Estoque: React.FC = () => {
   const [novoEstoque, setNovoEstoque] = useState('');
   const [novoEstoqueMinimo, setNovoEstoqueMinimo] = useState('');
   const [novoLoading, setNovoLoading] = useState(false);
+
+  // Estados para dados fiscais no Novo Produto
+  const [novoNcm, setNovoNcm] = useState('');
+  const [novoCfop, setNovoCfop] = useState('');
+  const [novoIcms, setNovoIcms] = useState('');
+  const [novoPis, setNovoPis] = useState('');
+  const [novoCofins, setNovoCofins] = useState('');
+  const [showFiscalFields, setShowFiscalFields] = useState(false);
+
+  // Estados para Importação XML
+  const [isXmlModalOpen, setIsXmlModalOpen] = useState(false);
+  const [xmlItems, setXmlItems] = useState<any[]>([]);
+  const [xmlIssuerName, setXmlIssuerName] = useState('');
+  const [xmlIssuerCnpj, setXmlIssuerCnpj] = useState('');
+  const [xmlLoading, setXmlLoading] = useState(false);
 
   // Carregar produtos com paginação estrita
   const fetchInventory = async (page: number) => {
@@ -259,7 +275,12 @@ export const Estoque: React.FC = () => {
           estoque_minimo: estoqueMinInt,
           imagem_url: null,
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          ncm: novoNcm || null,
+          cfop: novoCfop || null,
+          icms_aliquota: novoIcms ? parseFloat(novoIcms) : null,
+          pis_aliquota: novoPis ? parseFloat(novoPis) : null,
+          cofins_aliquota: novoCofins ? parseFloat(novoCofins) : null
         };
 
         const newLog: EstoqueLog = {
@@ -294,7 +315,12 @@ export const Estoque: React.FC = () => {
           preco: precoNum,
           preco_custo: precoCustoNum,
           estoque: estoqueInt,
-          estoque_minimo: estoqueMinInt
+          estoque_minimo: estoqueMinInt,
+          ncm: novoNcm || null,
+          cfop: novoCfop || null,
+          icms_aliquota: novoIcms ? parseFloat(novoIcms) : null,
+          pis_aliquota: novoPis ? parseFloat(novoPis) : null,
+          cofins_aliquota: novoCofins ? parseFloat(novoCofins) : null
         })
         .select()
         .single();
@@ -373,6 +399,219 @@ export const Estoque: React.FC = () => {
     setNovoPrecoCusto('');
     setNovoEstoque('');
     setNovoEstoqueMinimo('');
+    setNovoNcm('');
+    setNovoCfop('');
+    setNovoIcms('');
+    setNovoPis('');
+    setNovoCofins('');
+    setShowFiscalFields(false);
+  };
+
+  // Processar Upload do XML de NF-e
+  const handleXmlUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(text, "text/xml");
+        
+        // Extrair Emitente
+        const emitNome = xmlDoc.getElementsByTagName("xNome")[0]?.textContent || 'Emitente Desconhecido';
+        const emitCnpj = xmlDoc.getElementsByTagName("CNPJ")[0]?.textContent || '00.000.000/0000-00';
+        
+        setXmlIssuerName(emitNome);
+        setXmlIssuerCnpj(emitCnpj);
+        
+        // Extrair Itens da Nota
+        const items: any[] = [];
+        const detNodes = xmlDoc.getElementsByTagName("det");
+        
+        for (let i = 0; i < detNodes.length; i++) {
+          const node = detNodes[i];
+          const prodNode = node.getElementsByTagName("prod")[0];
+          if (prodNode) {
+            const nome = prodNode.getElementsByTagName("xProd")[0]?.textContent || 'Produto sem nome';
+            const sku = prodNode.getElementsByTagName("cProd")[0]?.textContent || '';
+            const quantidade = parseFloat(prodNode.getElementsByTagName("qCom")[0]?.textContent || '0');
+            const preco_custo = parseFloat(prodNode.getElementsByTagName("vUnCom")[0]?.textContent || '0');
+            const ncm = prodNode.getElementsByTagName("NCM")[0]?.textContent || '';
+            const cfop = prodNode.getElementsByTagName("CFOP")[0]?.textContent || '5102';
+            
+            items.push({ nome, sku, quantidade, preco_custo, ncm, cfop });
+          }
+        }
+        
+        if (items.length === 0) {
+          toast('Erro no XML', 'Nenhum produto foi encontrado no arquivo XML anexado.', 'error');
+          return;
+        }
+        
+        setXmlItems(items);
+        toast('XML Processado', `${items.length} itens extraídos do XML com sucesso!`, 'success');
+      } catch (err: any) {
+        console.error('Erro ao ler XML:', err);
+        toast('Erro de Leitura', 'Incapaz de analisar o arquivo XML da NF-e.', 'error');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Confirmar Importação do XML de NF-e para o Estoque
+  const handleXmlImportConfirm = async () => {
+    if (xmlItems.length === 0) return;
+    setXmlLoading(true);
+    
+    try {
+      if (isMockMode) {
+        const mockProducts = getMockProducts();
+        const logsList = getMockLogs();
+        
+        let productsUpdated = [...mockProducts];
+        let logsCreated: EstoqueLog[] = [];
+        
+        xmlItems.forEach((xmlItem) => {
+          const existingIdx = productsUpdated.findIndex(p => p.sku.toLowerCase() === xmlItem.sku.toLowerCase());
+          
+          if (existingIdx !== -1) {
+            // Atualizar existente
+            const prod = productsUpdated[existingIdx];
+            productsUpdated[existingIdx] = {
+              ...prod,
+              estoque: prod.estoque + xmlItem.quantidade,
+              preco_custo: xmlItem.preco_custo,
+              ncm: xmlItem.ncm || prod.ncm,
+              cfop: xmlItem.cfop || prod.cfop,
+              updated_at: new Date().toISOString()
+            };
+            
+            logsCreated.push({
+              id: 'log-' + Math.random().toString(36).substring(2, 9),
+              produto_id: prod.id,
+              quantidade: xmlItem.quantidade,
+              tipo: 'entrada',
+              descricao: `Entrada automática por XML de NF-e (Emitente: ${xmlIssuerName})`,
+              usuario_id: 'd9b736b4-24ff-4fc9-b684-2a62886f3458',
+              created_at: new Date().toISOString(),
+              produto: { nome: prod.nome, sku: prod.sku }
+            });
+          } else {
+            // Cadastrar novo
+            const newId = 'prod-' + Math.random().toString(36).substring(2, 9);
+            const newProd: Produto = {
+              id: newId,
+              nome: xmlItem.nome,
+              sku: xmlItem.sku,
+              preco: Number((xmlItem.preco_custo * 1.5).toFixed(2)), // Margem padrão de 50%
+              preco_custo: xmlItem.preco_custo,
+              estoque: xmlItem.quantidade,
+              estoque_minimo: 3,
+              imagem_url: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              ncm: xmlItem.ncm || null,
+              cfop: xmlItem.cfop || null
+            };
+            
+            productsUpdated.push(newProd);
+            
+            logsCreated.push({
+              id: 'log-' + Math.random().toString(36).substring(2, 9),
+              produto_id: newId,
+              quantidade: xmlItem.quantidade,
+              tipo: 'entrada',
+              descricao: `Carga inicial automática por XML de NF-e (Emitente: ${xmlIssuerName})`,
+              usuario_id: 'd9b736b4-24ff-4fc9-b684-2a62886f3458',
+              created_at: new Date().toISOString(),
+              produto: { nome: xmlItem.nome, sku: xmlItem.sku }
+            });
+          }
+        });
+        
+        saveMockProducts(productsUpdated);
+        saveMockLogs([...logsCreated, ...logsList]);
+        
+        toast('XML Importado!', `${xmlItems.length} produtos atualizados/cadastrados localmente!`, 'success');
+        setIsXmlModalOpen(false);
+        setXmlItems([]);
+        fetchInventory(currentPage);
+        setXmlLoading(false);
+        return;
+      }
+      
+      // -- MODO REAL DO SUPABASE --
+      for (const xmlItem of xmlItems) {
+        // Verificar se existe
+        const { data: existing } = await supabase
+          .from('produtos')
+          .select('*')
+          .eq('sku', xmlItem.sku)
+          .maybeSingle();
+          
+        if (existing) {
+          // Atualizar
+          const { error: prodErr } = await supabase
+            .from('produtos')
+            .update({
+              estoque: existing.estoque + xmlItem.quantidade,
+              preco_custo: xmlItem.preco_custo,
+              ncm: xmlItem.ncm || existing.ncm,
+              cfop: xmlItem.cfop || existing.cfop,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existing.id);
+            
+          if (prodErr) throw prodErr;
+          
+          await supabase.from('estoque_logs').insert({
+            produto_id: existing.id,
+            quantidade: xmlItem.quantidade,
+            tipo: 'entrada',
+            descricao: `Entrada via XML de NF-e (Emitente: ${xmlIssuerName})`,
+            usuario_id: (await supabase.auth.getUser()).data.user?.id
+          });
+        } else {
+          // Cadastrar
+          const { data: newProd, error: insertErr } = await supabase
+            .from('produtos')
+            .insert({
+              nome: xmlItem.nome,
+              sku: xmlItem.sku,
+              preco: Number((xmlItem.preco_custo * 1.5).toFixed(2)),
+              preco_custo: xmlItem.preco_custo,
+              estoque: xmlItem.quantidade,
+              estoque_minimo: 3,
+              ncm: xmlItem.ncm || null,
+              cfop: xmlItem.cfop || null
+            })
+            .select()
+            .single();
+            
+          if (insertErr) throw insertErr;
+          
+          await supabase.from('estoque_logs').insert({
+            produto_id: newProd.id,
+            quantidade: xmlItem.quantidade,
+            tipo: 'entrada',
+            descricao: `Carga automática via XML de NF-e (Emitente: ${xmlIssuerName})`,
+            usuario_id: (await supabase.auth.getUser()).data.user?.id
+          });
+        }
+      }
+      
+      toast('XML Importado!', `${xmlItems.length} produtos atualizados no Supabase!`, 'success');
+      setIsXmlModalOpen(false);
+      setXmlItems([]);
+      fetchInventory(currentPage);
+    } catch (err: any) {
+      console.error('Erro na importação em lote:', err);
+      toast('Falha na Importação', err.message || 'Erro inesperado na gravação em lote.', 'error');
+    } finally {
+      setXmlLoading(false);
+    }
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE) || 1;
@@ -401,6 +640,14 @@ export const Estoque: React.FC = () => {
             onClick={handleLogsOpen}
           >
             <History className="h-4 w-4" /> Histórico de Logs
+          </Button>
+
+          <Button 
+            variant="outline" 
+            className="flex items-center gap-2 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+            onClick={() => setIsXmlModalOpen(true)}
+          >
+            <FileUp className="h-4 w-4" /> Importar XML NF-e
           </Button>
 
           <Button 
@@ -670,6 +917,69 @@ export const Estoque: React.FC = () => {
             />
           </div>
 
+          {/* Seção Dados Fiscais */}
+          <div className="border border-border/80 rounded-lg p-3 bg-muted/20 space-y-3">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowFiscalFields(!showFiscalFields)}
+            >
+              <span className="flex items-center gap-1.5">
+                <FileSpreadsheet className="h-4 w-4 text-indigo-500" />
+                Dados Fiscais do Produto (Opcional)
+              </span>
+              {showFiscalFields ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+
+            {showFiscalFields && (
+              <div className="grid gap-3 pt-2 border-t border-border/40 animate-slide-down">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    label="Código NCM"
+                    placeholder="Ex: 84713019"
+                    maxLength={8}
+                    value={novoNcm}
+                    onChange={(e) => setNovoNcm(e.target.value)}
+                  />
+                  <Input
+                    label="Código CFOP"
+                    placeholder="Ex: 5102"
+                    maxLength={4}
+                    value={novoCfop}
+                    onChange={(e) => setNovoCfop(e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Input
+                    label="Alíquota ICMS (%)"
+                    type="number"
+                    step="0.01"
+                    placeholder="Ex: 18.00"
+                    value={novoIcms}
+                    onChange={(e) => setNovoIcms(e.target.value)}
+                  />
+                  <Input
+                    label="Alíquota PIS (%)"
+                    type="number"
+                    step="0.01"
+                    placeholder="Ex: 1.65"
+                    value={novoPis}
+                    onChange={(e) => setNovoPis(e.target.value)}
+                  />
+                  <Input
+                    label="Alíquota COFINS (%)"
+                    type="number"
+                    step="0.01"
+                    placeholder="Ex: 7.60"
+                    value={novoCofins}
+                    onChange={(e) => setNovoCofins(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setIsNovoProdutoModalOpen(false)}>
               Cancelar
@@ -726,6 +1036,89 @@ export const Estoque: React.FC = () => {
           <Button variant="outline" onClick={() => setIsLogsModalOpen(false)}>
             Fechar Logs
           </Button>
+        </div>
+      </Dialog>
+
+      {/* Modal 4: Importar XML de NF-e */}
+      <Dialog
+        isOpen={isXmlModalOpen}
+        onClose={() => { setIsXmlModalOpen(false); setXmlItems([]); }}
+        title="Importação Automática via XML"
+        description="Carregue o arquivo XML da NF-e recebida para atualizar ou cadastrar estoque automaticamente."
+      >
+        <div className="space-y-4">
+          {xmlItems.length === 0 ? (
+            <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:border-emerald-500/50 transition-colors" onClick={() => document.getElementById('xml-file-upload')?.click()}>
+              <input 
+                type="file" 
+                id="xml-file-upload" 
+                accept=".xml" 
+                className="hidden" 
+                onChange={handleXmlUpload} 
+              />
+              <FileCode className="h-10 w-10 text-muted-foreground mb-2" />
+              <p className="text-sm font-bold">Selecione o arquivo XML de NF-e</p>
+              <p className="text-xs text-muted-foreground mt-1">Carregue apenas arquivos oficiais .XML gerados pela SEFAZ</p>
+            </div>
+          ) : (
+            <div className="space-y-4 animate-slide-up">
+              
+              {/* Informações da Nota */}
+              <div className="grid gap-2 sm:grid-cols-2 p-3 rounded-lg bg-emerald-500/5 dark:bg-emerald-500/2 border border-emerald-500/20 text-xs">
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold">Fornecedor / Emitente</span>
+                  <p className="font-bold truncate">{xmlIssuerName}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold">CNPJ Emitente</span>
+                  <p className="font-bold font-mono">{xmlIssuerCnpj}</p>
+                </div>
+              </div>
+
+              {/* Tabela de Preview */}
+              <div className="border border-border/80 rounded-lg overflow-hidden max-h-[220px] overflow-y-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-muted/40 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border">
+                      <th className="p-2">Produto (XML)</th>
+                      <th className="p-2 text-center">Quantidade</th>
+                      <th className="p-2 text-right">P. Custo</th>
+                      <th className="p-2 text-center">SKU</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {xmlItems.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-muted/10">
+                        <td className="p-2 font-medium truncate max-w-[150px]" title={item.nome}>{item.nome}</td>
+                        <td className="p-2 text-center font-bold">{item.quantidade} un</td>
+                        <td className="p-2 text-right font-mono">R$ {item.preco_custo.toFixed(2)}</td>
+                        <td className="p-2 text-center font-mono text-[10px] bg-muted/20">{item.sku}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => setXmlItems([])}
+                >
+                  Limpar XML
+                </Button>
+                <Button 
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-glow-success border-0"
+                  disabled={xmlLoading}
+                  onClick={handleXmlImportConfirm}
+                >
+                  {xmlLoading ? 'Gravando no Estoque...' : 'Confirmar Importação'}
+                </Button>
+              </div>
+
+            </div>
+          )}
         </div>
       </Dialog>
 

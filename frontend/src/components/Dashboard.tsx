@@ -6,7 +6,8 @@ import { Button } from './ui/button.tsx';
 import { useToast } from './ui/toast.tsx';
 import { 
   TrendingUp, DollarSign, AlertTriangle, 
-  ShoppingBag, Sparkles, RefreshCw, Clock, Trash2 
+  ShoppingBag, Sparkles, RefreshCw, Clock, Trash2,
+  Package, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { 
@@ -28,7 +29,15 @@ export const Dashboard: React.FC = () => {
   });
   const [baixoEstoqueAlertas, setBaixoEstoqueAlertas] = useState<Produto[]>([]);
   const [vendasRecentes, setVendasRecentes] = useState<Venda[]>([]);
-  const [reportData, setReportData] = useState<any>(null);
+  
+  // Novos Estados
+  const [custoTotalEstoque, setCustoTotalEstoque] = useState(0);
+  const [metrics, setMetrics] = useState({
+    faturamento7d: 0, prevFaturamento7d: 0, change7d: 0,
+    faturamento15d: 0, prevFaturamento15d: 0, change15d: 0,
+    faturamento30d: 0, prevFaturamento30d: 0, change30d: 0,
+  });
+  const [top10Produtos, setTop10Produtos] = useState<any[]>([]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -56,17 +65,59 @@ export const Dashboard: React.FC = () => {
         setBaixoEstoqueAlertas(produtosAlerta.slice(0, 5));
         setVendasRecentes(sales.slice(0, 5));
 
-        // Simular o relatório rápido
-        setReportData({
-          periodo: '30 dias (Simulado)',
-          total_vendas: sales.length,
-          faturamento_total: sales.reduce((acc, curr) => acc + Number(curr.total), 0),
-          produtos_mais_vendidos: [
-            { produto_nome: 'Notebook Ultra Slim 15.6"', quantidade_vendida: 1, total_faturado: 4500 },
-            { produto_nome: 'Teclado Mecânico RGB Brown Switch', quantidade_vendida: 1, total_faturado: 320 },
-            { produto_nome: 'Mouse Gamer Wireless 16.000 DPI', quantidade_vendida: 2, total_faturado: 360 }
-          ]
+        // 3. Custo Total de Estoque
+        const costSum = products.reduce((acc, curr) => acc + (curr.estoque * (curr.preco_custo || 0)), 0);
+        setCustoTotalEstoque(costSum);
+
+        // 4. Métricas Comparativas
+        const getPeriodFaturamento = (salesList: Venda[], daysStart: number, daysEnd: number) => {
+          const nowTime = Date.now();
+          const start = nowTime - 1000 * 60 * 60 * 24 * daysStart;
+          const end = nowTime - 1000 * 60 * 60 * 24 * daysEnd;
+          return salesList
+            .filter(s => {
+              const d = new Date(s.created_at).getTime();
+              return d >= start && d < end;
+            })
+            .reduce((acc, curr) => acc + Number(curr.total), 0);
+        };
+
+        const f7 = getPeriodFaturamento(sales, 7, 0);
+        const p7 = getPeriodFaturamento(sales, 14, 7);
+        const diff7 = p7 > 0 ? ((f7 - p7) / p7) * 100 : f7 > 0 ? 100 : 0;
+
+        const f15 = getPeriodFaturamento(sales, 15, 0);
+        const p15 = getPeriodFaturamento(sales, 30, 15);
+        const diff15 = p15 > 0 ? ((f15 - p15) / p15) * 100 : f15 > 0 ? 100 : 0;
+
+        const f30 = getPeriodFaturamento(sales, 30, 0);
+        const p30 = getPeriodFaturamento(sales, 60, 30);
+        const diff30 = p30 > 0 ? ((f30 - p30) / p30) * 100 : f30 > 0 ? 100 : 0;
+
+        setMetrics({
+          faturamento7d: f7, prevFaturamento7d: p7, change7d: diff7,
+          faturamento15d: f15, prevFaturamento15d: p15, change15d: diff15,
+          faturamento30d: f30, prevFaturamento30d: p30, change30d: diff30,
         });
+
+        // 5. Top 10 Produtos Mais Vendidos
+        const productQtyMap: { [key: string]: { produto_nome: string, quantidade_vendida: number, total_faturado: number } } = {};
+        sales.forEach(sale => {
+          (sale.itens || []).forEach(item => {
+            const pid = item.produto_id;
+            const pName = item.produto?.nome || 'Produto';
+            if (!productQtyMap[pid]) {
+              productQtyMap[pid] = { produto_nome: pName, quantidade_vendida: 0, total_faturado: 0 };
+            }
+            productQtyMap[pid].quantidade_vendida += item.quantidade;
+            productQtyMap[pid].total_faturado += item.quantidade * item.preco_unitario;
+          });
+        });
+
+        const top10 = Object.values(productQtyMap)
+          .sort((a, b) => b.quantidade_vendida - a.quantidade_vendida)
+          .slice(0, 10);
+        setTop10Produtos(top10);
 
         setLoading(false);
         return;
@@ -140,15 +191,72 @@ export const Dashboard: React.FC = () => {
 
       setVendasRecentes(formattedSales);
 
-      // 4. Buscar o relatório rápido da API Node.js
-      try {
-        const response = await fetch('http://localhost:3001/api/report?dias=30');
-        if (response.ok) {
-          const report = await response.json();
-          setReportData(report);
-        }
-      } catch (apiErr) {
-        console.warn('API local offline, incapaz de buscar relatório rápido. Usando fallback local.');
+      // 4. Custo Total de Estoque no Supabase
+      const { data: allProds, error: allProdsErr } = await supabase
+        .from('produtos')
+        .select('estoque, preco_custo');
+        
+      if (allProdsErr) throw allProdsErr;
+      const costSum = (allProds || []).reduce((acc, curr) => acc + (curr.estoque * (curr.preco_custo || 0)), 0);
+      setCustoTotalEstoque(costSum);
+
+      // 5. Métricas Comparativas no Supabase
+      const { data: allSales, error: allSalesErr } = await supabase
+        .from('vendas')
+        .select('total, created_at');
+
+      if (allSalesErr) throw allSalesErr;
+
+      const getPeriodFaturamentoReal = (salesList: any[], daysStart: number, daysEnd: number) => {
+        const nowTime = Date.now();
+        const start = nowTime - 1000 * 60 * 60 * 24 * daysStart;
+        const end = nowTime - 1000 * 60 * 60 * 24 * daysEnd;
+        return salesList
+          .filter(s => {
+            const d = new Date(s.created_at).getTime();
+            return d >= start && d < end;
+          })
+          .reduce((acc, curr) => acc + Number(curr.total), 0);
+      };
+
+      const rf7 = getPeriodFaturamentoReal(allSales || [], 7, 0);
+      const rp7 = getPeriodFaturamentoReal(allSales || [], 14, 7);
+      const rdiff7 = rp7 > 0 ? ((rf7 - rp7) / rp7) * 100 : rf7 > 0 ? 100 : 0;
+
+      const rf15 = getPeriodFaturamentoReal(allSales || [], 15, 0);
+      const rp15 = getPeriodFaturamentoReal(allSales || [], 30, 15);
+      const rdiff15 = rp15 > 0 ? ((rf15 - rp15) / rp15) * 100 : rf15 > 0 ? 100 : 0;
+
+      const rf30 = getPeriodFaturamentoReal(allSales || [], 30, 0);
+      const rp30 = getPeriodFaturamentoReal(allSales || [], 60, 30);
+      const rdiff30 = rp30 > 0 ? ((rf30 - rp30) / rp30) * 100 : rf30 > 0 ? 100 : 0;
+
+      setMetrics({
+        faturamento7d: rf7, prevFaturamento7d: rp7, change7d: rdiff7,
+        faturamento15d: rf15, prevFaturamento15d: rp15, change15d: rdiff15,
+        faturamento30d: rf30, prevFaturamento30d: rp30, change30d: rdiff30,
+      });
+
+      // 6. Top 10 Produtos Mais Vendidos no Supabase
+      const { data: allItens, error: allItensErr } = await supabase
+        .from('itens_venda')
+        .select('quantidade, preco_unitario, produtos(nome)');
+
+      if (!allItensErr && allItens) {
+        const productQtyMapReal: { [key: string]: { produto_nome: string, quantidade_vendida: number, total_faturado: number } } = {};
+        allItens.forEach((item: any) => {
+          const pName = item.produtos?.nome || 'Produto';
+          if (!productQtyMapReal[pName]) {
+            productQtyMapReal[pName] = { produto_nome: pName, quantidade_vendida: 0, total_faturado: 0 };
+          }
+          productQtyMapReal[pName].quantidade_vendida += item.quantidade;
+          productQtyMapReal[pName].total_faturado += item.quantidade * item.preco_unitario;
+        });
+
+        const rTop10 = Object.values(productQtyMapReal)
+          .sort((a, b) => b.quantidade_vendida - a.quantidade_vendida)
+          .slice(0, 10);
+        setTop10Produtos(rTop10);
       }
 
     } catch (err: any) {
@@ -291,7 +399,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-border/60 hover:border-primary/30 transition-all duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Faturamento de Hoje</span>
@@ -303,6 +411,21 @@ export const Dashboard: React.FC = () => {
             </div>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
               <TrendingUp className="h-3 w-3 text-emerald-500" /> +12.3% em relação a ontem
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/60 hover:border-emerald-500/30 transition-all duration-300">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Estoque (Preço Custo)</span>
+            <Package className="h-5 w-5 text-emerald-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-extrabold tracking-tight">
+              R$ {custoTotalEstoque.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Total investido em mercadoria
             </p>
           </CardContent>
         </Card>
@@ -334,6 +457,38 @@ export const Dashboard: React.FC = () => {
             </p>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Métricas Comparativas */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          { label: 'Últimos 7 Dias', value: metrics.faturamento7d, prev: metrics.prevFaturamento7d, diff: metrics.change7d },
+          { label: 'Últimos 15 Dias', value: metrics.faturamento15d, prev: metrics.prevFaturamento15d, diff: metrics.change15d },
+          { label: 'Últimos 30 Dias', value: metrics.faturamento30d, prev: metrics.prevFaturamento30d, diff: metrics.change30d }
+        ].map((m, idx) => {
+          const isUp = m.diff >= 0;
+          return (
+            <Card key={idx} className="border-border/60 shadow-sm relative overflow-hidden bg-card/60 backdrop-blur-md">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{m.label}</p>
+                  <p className="text-xl font-black mt-1 text-indigo-500">
+                    R$ {m.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Anterior: R$ {m.prev.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div className={`flex items-center gap-0.5 px-2 py-1 rounded-full text-xs font-bold shrink-0 ${
+                  isUp ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
+                }`}>
+                  {isUp ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+                  {isUp ? '+' : ''}{m.diff.toFixed(1)}%
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Main Grid: Low stock vs Recent sales */}
@@ -433,72 +588,66 @@ export const Dashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* Relatório Rápido da API (Agregados no Banco de Dados) */}
-      {reportData && (
-        <Card className="border-border/60 shadow-md bg-gradient-to-br from-card to-indigo-500/2">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2 text-primary">
-              <Sparkles className="h-4 w-4" /> Desempenho nos Últimos 30 Dias (Agregados Postgres)
-            </CardTitle>
-            <CardDescription>
-              Relatório rápido ultra-leve calculado diretamente na engine de banco de dados do Supabase.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-              <div className="p-4 rounded-lg bg-background border border-border">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase">Faturamento Período</span>
-                <p className="text-xl font-bold mt-1 text-indigo-500">R$ {Number(reportData.faturamento_total).toFixed(2)}</p>
-              </div>
-              <div className="p-4 rounded-lg bg-background border border-border">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase">Total de Transações</span>
-                <p className="text-xl font-bold mt-1">{reportData.total_vendas}</p>
-              </div>
-              <div className="p-4 rounded-lg bg-background border border-border">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase">Ticket Médio</span>
-                <p className="text-xl font-bold mt-1">
-                  R$ {reportData.total_vendas > 0 ? (Number(reportData.faturamento_total) / reportData.total_vendas).toFixed(2) : '0.00'}
-                </p>
-              </div>
-              <div className="p-4 rounded-lg bg-background border border-border">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase">Tempo de Resposta</span>
-                <p className="text-xl font-bold mt-1 text-emerald-500">&lt; 15ms</p>
-              </div>
-            </div>
-
-            {/* Top Vendidos */}
-            <div>
-              <h4 className="text-sm font-bold mb-3">Produtos Mais Vendidos no Período</h4>
-              <Table>
-                <TableHeader>
+      {/* Top 10 Produtos Mais Vendidos */}
+      <Card className="border-border/60 shadow-md bg-gradient-to-br from-card to-indigo-500/2">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2 text-primary">
+            <Sparkles className="h-4 w-4 animate-pulse" /> Classificação dos Top 10 Produtos Mais Vendidos
+          </CardTitle>
+          <CardDescription>
+            Lista de produtos de maior circulação e volume de vendas faturadas no sistema.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-16 text-center">Rank</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead className="text-center">Quantidade Vendida</TableHead>
+                  <TableHead className="text-right">Faturamento Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {top10Produtos.length === 0 ? (
                   <TableRow>
-                    <TableHead>Produto</TableHead>
-                    <TableHead className="text-center">Quantidade Vendida</TableHead>
-                    <TableHead className="text-right">Faturamento Total</TableHead>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      Nenhuma venda registrada para compilar os top 10 produtos.
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.produtos_mais_vendidos.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground py-4">
-                        Nenhum produto registrado no período.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    reportData.produtos_mais_vendidos.map((prod: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell className="font-medium">{prod.produto_nome}</TableCell>
-                        <TableCell className="text-center">{prod.quantidade_vendida} un</TableCell>
-                        <TableCell className="text-right font-bold text-indigo-500">R$ {Number(prod.total_faturado).toFixed(2)}</TableCell>
+                ) : (
+                  top10Produtos.map((prod: any, idx: number) => {
+                    const colors = [
+                      'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20',
+                      'bg-slate-400/10 text-slate-500 dark:text-slate-300 border border-slate-400/20',
+                      'bg-amber-600/10 text-amber-700 dark:text-amber-500 border border-amber-600/20'
+                    ];
+                    const rankClass = idx < 3 
+                      ? colors[idx]
+                      : 'bg-muted text-muted-foreground';
+                    
+                    return (
+                      <TableRow key={idx} className="hover:bg-muted/10">
+                        <TableCell className="text-center">
+                          <span className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-xs font-black ${rankClass}`}>
+                            {idx + 1}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-bold text-xs">{prod.produto_nome}</TableCell>
+                        <TableCell className="text-center font-extrabold text-xs">{prod.quantidade_vendida} un</TableCell>
+                        <TableCell className="text-right font-black text-xs text-indigo-500">
+                          R$ {prod.total_faturado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
     </div>
   );
