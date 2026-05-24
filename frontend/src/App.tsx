@@ -5,19 +5,20 @@ import { Login } from './components/Login.tsx';
 import { Layout } from './components/Layout.tsx';
 import { Dashboard } from './components/Dashboard.tsx';
 import { PDV } from './components/PDV.tsx';
+import { Clientes } from './components/Clientes.tsx';
 import { Estoque } from './components/Estoque.tsx';
 import { EmpresaConfig } from './components/EmpresaConfig.tsx';
 
 // Componente Core interno para gerenciar visualização condicional baseada na autenticação
 const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'pdv' | 'estoque' | 'empresa'>('dashboard');
+  const [currentTab, setCurrentTab] = useState<'dashboard' | 'pdv' | 'estoque' | 'empresa' | 'clientes'>('dashboard');
 
   // Verificar se há parâmetro de tab na URL (ex: após retorno do OAuth ML)
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const tab = params.get('tab') as 'dashboard' | 'pdv' | 'estoque' | 'empresa' | null;
-    if (tab && ['dashboard', 'pdv', 'estoque', 'empresa'].includes(tab)) {
+    const tab = params.get('tab') as 'dashboard' | 'pdv' | 'estoque' | 'empresa' | 'clientes' | null;
+    if (tab && ['dashboard', 'pdv', 'estoque', 'empresa', 'clientes'].includes(tab)) {
       setCurrentTab(tab);
     }
   }, []);
@@ -46,6 +47,8 @@ const AppContent: React.FC = () => {
         return <Dashboard />;
       case 'pdv':
         return <PDV />;
+      case 'clientes':
+        return <Clientes />;
       case 'estoque':
         return <Estoque />;
       case 'empresa':

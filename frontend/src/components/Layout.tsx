@@ -3,12 +3,12 @@ import { useAuth } from '../context/AuthContext.tsx';
 import { Button } from './ui/button.tsx';
 import { 
   Sparkles, LayoutDashboard, ShoppingCart, 
-  Package, LogOut, Sun, Moon, User as UserIcon, Menu, X, Building2
+  Package, LogOut, Sun, Moon, User as UserIcon, Menu, X, Building2, Users
 } from 'lucide-react';
 
 interface LayoutProps {
-  currentTab: 'dashboard' | 'pdv' | 'estoque' | 'empresa';
-  setCurrentTab: (tab: 'dashboard' | 'pdv' | 'estoque' | 'empresa') => void;
+  currentTab: 'dashboard' | 'pdv' | 'estoque' | 'empresa' | 'clientes';
+  setCurrentTab: (tab: 'dashboard' | 'pdv' | 'estoque' | 'empresa' | 'clientes') => void;
   children: React.ReactNode;
 }
 
@@ -16,7 +16,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
   const { user, signOut, isMockMode } = useAuth();
   const [theme, setTheme] = useState<'light' | 'dark'>('dark'); // Padrão: Modo Escuro premium
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
+  
   // Inicializar o tema
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
@@ -47,6 +47,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, setCurrentTab, child
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
     { id: 'pdv', label: 'PDV (Frente de Caixa)', icon: <ShoppingCart className="h-5 w-5" /> },
+    { id: 'clientes', label: 'Cadastrar Cliente', icon: <Users className="h-5 w-5" /> },
     { id: 'estoque', label: 'Estoque', icon: <Package className="h-5 w-5" /> },
     { id: 'empresa', label: 'Fiscal & Empresa', icon: <Building2 className="h-5 w-5" /> },
   ] as const;
