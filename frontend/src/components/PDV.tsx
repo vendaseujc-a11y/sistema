@@ -25,7 +25,7 @@ interface CartItem {
 }
 
 export const PDV: React.FC = () => {
-  const { isMockMode } = useAuth();
+  const { isMockMode, user } = useAuth();
   const { toast } = useToast();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,7 +60,12 @@ export const PDV: React.FC = () => {
         return;
       }
       
-      const { data: clientsData, error: clientsErr } = await supabase.from('clientes').select('*').order('nome');
+      let clientsQuery = supabase.from('clientes').select('*');
+      if (user?.id) {
+        clientsQuery = clientsQuery.eq('usuario_id', user.id);
+      }
+      const { data: clientsData, error: clientsErr } = await clientsQuery.order('nome');
+      
       if (clientsErr) {
         console.warn('Erro ao carregar clientes do Supabase (caindo para local):', clientsErr);
         setClientes(getMockClientes());
@@ -70,7 +75,12 @@ export const PDV: React.FC = () => {
         setClientes(getMockClientes());
       }
       
-      const { data: companyData, error: companyErr } = await supabase.from('empresa_fiscal').select('*').maybeSingle();
+      let companyQuery = supabase.from('empresa_fiscal').select('*');
+      if (user?.id) {
+        companyQuery = companyQuery.eq('usuario_id', user.id);
+      }
+      const { data: companyData, error: companyErr } = await companyQuery.maybeSingle();
+      
       if (companyErr) {
         console.warn('Erro ao carregar dados da empresa do Supabase (caindo para local):', companyErr);
         setEmpresa(getMockEmpresa());
@@ -182,6 +192,10 @@ export const PDV: React.FC = () => {
         .from('produtos')
         .select('*');
 
+      if (user?.id) {
+        query = query.eq('usuario_id', user.id);
+      }
+
       if (term) {
         // Se houver termo, busca por SKU exato ou Nome parcial
         query = query.or(`sku.ilike.%${term}%,nome.ilike.%${term}%`);
@@ -228,9 +242,15 @@ export const PDV: React.FC = () => {
       }
 
       // -- MODO REAL DO SUPABASE --
-      const { data, error } = await supabase
+      let query = supabase
         .from('produtos')
-        .select('*')
+        .select('*');
+
+      if (user?.id) {
+        query = query.eq('usuario_id', user.id);
+      }
+
+      const { data, error } = await query
         .eq('sku', barcode)
         .maybeSingle();
 

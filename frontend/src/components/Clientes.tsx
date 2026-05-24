@@ -14,7 +14,7 @@ import { Cliente } from '../types/index.ts';
 import { supabase } from '../lib/supabase.js';
 
 export const Clientes: React.FC = () => {
-  const { isMockMode } = useAuth();
+  const { isMockMode, user } = useAuth();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(false);
@@ -40,10 +40,15 @@ export const Clientes: React.FC = () => {
       }
 
       // -- MODO REAL DO SUPABASE --
-      const { data, error } = await supabase
+      let query = supabase
         .from('clientes')
-        .select('*')
-        .order('nome');
+        .select('*');
+
+      if (user?.id) {
+        query = query.eq('usuario_id', user.id);
+      }
+
+      const { data, error } = await query.order('nome');
 
       if (error) throw error;
       setClientes(data || []);

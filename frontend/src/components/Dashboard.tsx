@@ -19,7 +19,7 @@ import {
 import { Produto, Venda, EstoqueLog } from '../types/index.ts';
 
 export const Dashboard: React.FC = () => {
-  const { isMockMode } = useAuth();
+  const { isMockMode, user } = useAuth();
   const { toast } = useToast();
   
   const [loading, setLoading] = useState(true);
@@ -162,10 +162,16 @@ export const Dashboard: React.FC = () => {
       const hojeIso = hoje.toISOString();
 
       // 1. Buscar vendas de hoje
-      const { data: salesToday, error: salesError } = await supabase
+      let salesQuery = supabase
         .from('vendas')
         .select('total')
         .gte('created_at', hojeIso);
+
+      if (user?.id) {
+        salesQuery = salesQuery.eq('usuario_id', user.id);
+      }
+
+      const { data: salesToday, error: salesError } = await salesQuery;
 
       if (salesError) throw salesError;
 
@@ -173,9 +179,15 @@ export const Dashboard: React.FC = () => {
       const totalFaturado = salesToday?.reduce((acc, curr) => acc + Number(curr.total), 0) || 0;
 
       // 2. Buscar contagem de estoque baixo
-      const { data: lowStockProducts, error: stockError } = await supabase
+      let stockQuery = supabase
         .from('produtos')
         .select('*');
+
+      if (user?.id) {
+        stockQuery = stockQuery.eq('usuario_id', user.id);
+      }
+
+      const { data: lowStockProducts, error: stockError } = await stockQuery;
 
       if (stockError) throw stockError;
 
@@ -189,7 +201,7 @@ export const Dashboard: React.FC = () => {
       setBaixoEstoqueAlertas(produtosAlerta.slice(0, 5));
 
       // 3. Buscar vendas recentes
-      const { data: recentSales, error: recentError } = await supabase
+      let recentSalesQuery = supabase
         .from('vendas')
         .select(`
           id,
@@ -201,7 +213,13 @@ export const Dashboard: React.FC = () => {
             preco_unitario,
             produtos (nome, sku)
           )
-        `)
+        `);
+
+      if (user?.id) {
+        recentSalesQuery = recentSalesQuery.eq('usuario_id', user.id);
+      }
+
+      const { data: recentSales, error: recentError } = await recentSalesQuery
         .order('created_at', { ascending: false })
         .limit(5);
 
@@ -225,18 +243,30 @@ export const Dashboard: React.FC = () => {
       setVendasRecentes(formattedSales);
 
       // 4. Custo Total de Estoque no Supabase
-      const { data: allProds, error: allProdsErr } = await supabase
+      let allProdsQuery = supabase
         .from('produtos')
         .select('estoque, preco_custo');
+
+      if (user?.id) {
+        allProdsQuery = allProdsQuery.eq('usuario_id', user.id);
+      }
+
+      const { data: allProds, error: allProdsErr } = await allProdsQuery;
         
       if (allProdsErr) throw allProdsErr;
       const costSum = (allProds || []).reduce((acc, curr) => acc + (curr.estoque * (curr.preco_custo || 0)), 0);
       setCustoTotalEstoque(costSum);
 
       // 5. Métricas Comparativas no Supabase
-      const { data: allSales, error: allSalesErr } = await supabase
+      let allSalesQuery = supabase
         .from('vendas')
         .select('total, created_at');
+
+      if (user?.id) {
+        allSalesQuery = allSalesQuery.eq('usuario_id', user.id);
+      }
+
+      const { data: allSales, error: allSalesErr } = await allSalesQuery;
 
       if (allSalesErr) throw allSalesErr;
 
@@ -271,9 +301,15 @@ export const Dashboard: React.FC = () => {
       });
 
       // 6. Top 10 Produtos Mais Vendidos no Supabase
-      const { data: allItens, error: allItensErr } = await supabase
+      let allItensQuery = supabase
         .from('itens_venda')
-        .select('quantidade, preco_unitario, produtos(nome)');
+        .select('quantidade, preco_unitario, produtos!inner(nome, usuario_id)');
+
+      if (user?.id) {
+        allItensQuery = allItensQuery.eq('produtos.usuario_id', user.id);
+      }
+
+      const { data: allItens, error: allItensErr } = await allItensQuery;
 
       if (!allItensErr && allItens) {
         const productQtyMapReal: { [key: string]: { produto_nome: string, quantidade_vendida: number, total_faturado: number } } = {};

@@ -18,7 +18,7 @@ import {
 import { Produto, EstoqueLog } from '../types/index.ts';
 
 export const Estoque: React.FC = () => {
-  const { isMockMode } = useAuth();
+  const { isMockMode, user } = useAuth();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -84,9 +84,15 @@ export const Estoque: React.FC = () => {
       }
 
       // -- MODO REAL DO SUPABASE (Otimizado de 10 em 10) --
-      const { data, count, error } = await supabase
+      let query = supabase
         .from('produtos')
-        .select('*', { count: 'exact' })
+        .select('*', { count: 'exact' });
+
+      if (user?.id) {
+        query = query.eq('usuario_id', user.id);
+      }
+
+      const { data, count, error } = await query
         .order('nome')
         .range(from, to);
 
@@ -113,7 +119,7 @@ export const Estoque: React.FC = () => {
       }
 
       // -- MODO REAL DO SUPABASE (Otimizado com limite) --
-      const { data, error } = await supabase
+      let query = supabase
         .from('estoque_logs')
         .select(`
           id,
@@ -122,7 +128,13 @@ export const Estoque: React.FC = () => {
           descricao,
           created_at,
           produtos (nome, sku)
-        `)
+        `);
+
+      if (user?.id) {
+        query = query.eq('usuario_id', user.id);
+      }
+
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(20);
 
