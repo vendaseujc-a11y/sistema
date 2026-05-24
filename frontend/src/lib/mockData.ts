@@ -162,44 +162,73 @@ const DEFAULT_LOGS: EstoqueLog[] = [
   }
 ];
 
+// Helper para isolar chaves do LocalStorage por usuário/e-mail
+const getUserPrefix = (): string => {
+  const mockUserStr = localStorage.getItem('mock_user');
+  if (mockUserStr) {
+    try {
+      const mockUser = JSON.parse(mockUserStr);
+      if (mockUser && mockUser.email) {
+        return `_${mockUser.email}`;
+      }
+    } catch (e) {
+      console.error('Erro ao ler mock_user para isolamento:', e);
+    }
+  }
+  return '';
+};
+
 // Funções para gerenciar o Mock DB no LocalStorage
 export const getMockProducts = (): Produto[] => {
-  const data = localStorage.getItem('mock_products');
+  const prefix = getUserPrefix();
+  const key = `mock_products${prefix}`;
+  const data = localStorage.getItem(key);
   if (!data) {
-    localStorage.setItem('mock_products', JSON.stringify(DEFAULT_PRODUCTS));
-    return DEFAULT_PRODUCTS;
+    // Se for um novo usuário logado específico (prefixo ativo), inicia DO ZERO (vazio)
+    const initial = prefix ? [] : DEFAULT_PRODUCTS;
+    localStorage.setItem(key, JSON.stringify(initial));
+    return initial;
   }
   return JSON.parse(data);
 };
 
 export const saveMockProducts = (products: Produto[]) => {
-  localStorage.setItem('mock_products', JSON.stringify(products));
+  const prefix = getUserPrefix();
+  localStorage.setItem(`mock_products${prefix}`, JSON.stringify(products));
 };
 
 export const getMockSales = (): Venda[] => {
-  const data = localStorage.getItem('mock_sales');
+  const prefix = getUserPrefix();
+  const key = `mock_sales${prefix}`;
+  const data = localStorage.getItem(key);
   if (!data) {
-    localStorage.setItem('mock_sales', JSON.stringify(DEFAULT_SALES));
-    return DEFAULT_SALES;
+    const initial = prefix ? [] : DEFAULT_SALES;
+    localStorage.setItem(key, JSON.stringify(initial));
+    return initial;
   }
   return JSON.parse(data);
 };
 
 export const saveMockSales = (sales: Venda[]) => {
-  localStorage.setItem('mock_sales', JSON.stringify(sales));
+  const prefix = getUserPrefix();
+  localStorage.setItem(`mock_sales${prefix}`, JSON.stringify(sales));
 };
 
 export const getMockLogs = (): EstoqueLog[] => {
-  const data = localStorage.getItem('mock_logs');
+  const prefix = getUserPrefix();
+  const key = `mock_logs${prefix}`;
+  const data = localStorage.getItem(key);
   if (!data) {
-    localStorage.setItem('mock_logs', JSON.stringify(DEFAULT_LOGS));
-    return DEFAULT_LOGS;
+    const initial = prefix ? [] : DEFAULT_LOGS;
+    localStorage.setItem(key, JSON.stringify(initial));
+    return initial;
   }
   return JSON.parse(data);
 };
 
 export const saveMockLogs = (logs: EstoqueLog[]) => {
-  localStorage.setItem('mock_logs', JSON.stringify(logs));
+  const prefix = getUserPrefix();
+  localStorage.setItem(`mock_logs${prefix}`, JSON.stringify(logs));
 };
 
 // Clientes & Empresa Mock Data Handlers
@@ -235,27 +264,45 @@ const DEFAULT_EMPRESA: Empresa = {
 };
 
 export const getMockClientes = (): Cliente[] => {
-  const data = localStorage.getItem('mock_clientes');
+  const prefix = getUserPrefix();
+  const key = `mock_clientes${prefix}`;
+  const data = localStorage.getItem(key);
   if (!data) {
-    localStorage.setItem('mock_clientes', JSON.stringify(DEFAULT_CLIENTS));
-    return DEFAULT_CLIENTS;
+    const initial = prefix ? [] : DEFAULT_CLIENTS;
+    localStorage.setItem(key, JSON.stringify(initial));
+    return initial;
   }
   return JSON.parse(data);
 };
 
 export const saveMockClientes = (clientes: Cliente[]) => {
-  localStorage.setItem('mock_clientes', JSON.stringify(clientes));
+  const prefix = getUserPrefix();
+  localStorage.setItem(`mock_clientes${prefix}`, JSON.stringify(clientes));
 };
 
 export const getMockEmpresa = (): Empresa => {
-  const data = localStorage.getItem('mock_empresa');
+  const prefix = getUserPrefix();
+  const key = `mock_empresa${prefix}`;
+  const data = localStorage.getItem(key);
   if (!data) {
-    localStorage.setItem('mock_empresa', JSON.stringify(DEFAULT_EMPRESA));
-    return DEFAULT_EMPRESA;
+    const initial: Empresa = prefix ? {
+      razao_social: '',
+      nome_fantasia: '',
+      cnpj: '',
+      inscricao_estadual: '',
+      regime_tributario: 'Simples Nacional',
+      endereco: '',
+      telefone: '',
+      certificado_a1_nome: null,
+      certificado_a1_validade: null
+    } : DEFAULT_EMPRESA;
+    localStorage.setItem(key, JSON.stringify(initial));
+    return initial;
   }
   return JSON.parse(data);
 };
 
 export const saveMockEmpresa = (empresa: Empresa) => {
-  localStorage.setItem('mock_empresa', JSON.stringify(empresa));
+  const prefix = getUserPrefix();
+  localStorage.setItem(`mock_empresa${prefix}`, JSON.stringify(empresa));
 };

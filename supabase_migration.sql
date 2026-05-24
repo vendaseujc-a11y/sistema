@@ -134,3 +134,50 @@ BEGIN
     RETURN v_venda_id;
 END;
 $$;
+
+
+-- =========================================================================
+-- 6. MULTI-TENANCY & ISOLAMENTO COMPLETO DE DADOS POR USUÁRIO (DO ZERO)
+-- =========================================================================
+-- Garante que cada novo usuário cadastrado inicie com uma base totalmente
+-- vazia (do zero) para configurar seu próprio catálogo, clientes, vendas e empresa.
+
+-- Adicionar coluna usuario_id com valor padrão auth.uid() para associação automática nas inserções
+ALTER TABLE public.clientes ADD COLUMN IF NOT EXISTS usuario_id UUID DEFAULT auth.uid();
+ALTER TABLE public.empresa_fiscal ADD COLUMN IF NOT EXISTS usuario_id UUID DEFAULT auth.uid();
+ALTER TABLE public.produtos ADD COLUMN IF NOT EXISTS usuario_id UUID DEFAULT auth.uid();
+ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS usuario_id UUID DEFAULT auth.uid();
+ALTER TABLE public.estoque_logs ADD COLUMN IF NOT EXISTS usuario_id UUID DEFAULT auth.uid();
+
+-- Habilitar RLS em todas as tabelas comerciais/fiscais
+ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.empresa_fiscal ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.produtos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vendas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.estoque_logs ENABLE ROW LEVEL SECURITY;
+
+-- Limpar políticas antigas para evitar duplicidade ou conflitos
+DROP POLICY IF EXISTS "Permitir leitura de clientes para autenticados" ON public.clientes;
+DROP POLICY IF EXISTS "Permitir insercao de clientes para autenticados" ON public.clientes;
+DROP POLICY IF EXISTS "Permitir tudo de empresa_fiscal para autenticados" ON public.empresa_fiscal;
+DROP POLICY IF EXISTS "Clientes: isolamento por usuario" ON public.clientes;
+DROP POLICY IF EXISTS "Empresa Fiscal: isolamento por usuario" ON public.empresa_fiscal;
+DROP POLICY IF EXISTS "Produtos: isolamento por usuario" ON public.produtos;
+DROP POLICY IF EXISTS "Vendas: isolamento por usuario" ON public.vendas;
+DROP POLICY IF EXISTS "Estoque Logs: isolamento por usuario" ON public.estoque_logs;
+
+-- Criar políticas RLS estritas de isolamento por ID de usuário (auth.uid() = usuario_id)
+CREATE POLICY "Clientes: isolamento por usuario" ON public.clientes
+    FOR ALL TO authenticated USING (auth.uid() = usuario_id) WITH CHECK (auth.uid() = usuario_id);
+
+CREATE POLICY "Empresa Fiscal: isolamento por usuario" ON public.empresa_fiscal
+    FOR ALL TO authenticated USING (auth.uid() = usuario_id) WITH CHECK (auth.uid() = usuario_id);
+
+CREATE POLICY "Produtos: isolamento por usuario" ON public.produtos
+    FOR ALL TO authenticated USING (auth.uid() = usuario_id) WITH CHECK (auth.uid() = usuario_id);
+
+CREATE POLICY "Vendas: isolamento por usuario" ON public.vendas
+    FOR ALL TO authenticated USING (auth.uid() = usuario_id) WITH CHECK (auth.uid() = usuario_id);
+
+CREATE POLICY "Estoque Logs: isolamento por usuario" ON public.estoque_logs
+    FOR ALL TO authenticated USING (auth.uid() = usuario_id) WITH CHECK (auth.uid() = usuario_id);
